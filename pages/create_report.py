@@ -26,22 +26,6 @@ if 'paystack_reference' not in st.session_state: # <-- CHANGE HERE
 if 'payment_verified' not in st.session_state:
     st.session_state.payment_verified = False
  
-# if 'order_id' not in st.session_state:
-#     st.session_state.order_id = None
-# if 'payment_link' not in st.session_state:
-#     st.session_state.payment_link = None
-# if 'payment_verified' not in st.session_state:
-#     st.session_state.payment_verified = False
- 
-# # --- Check user's current payment status from DB ---
-# payment_query = f"SELECT payment FROM users WHERE email_address='{user_email}'"
-# payment_status_df = fetch_data(payment_query)
-# user_has_paid = not payment_status_df.empty and payment_status_df['payment'].values[0]
- 
-# # If payment was just verified in this session, override DB check
-# if st.session_state.payment_verified:
-#     user_has_paid = True
- 
 # ------------------ INSIGHT GROUP SELECTION ------------------
 insight_groups = [
     "Demographic Analysis",
@@ -175,6 +159,12 @@ if st.button("Verify My Payment"):
                 message = verification_response.get("data", {}).get("gateway_response", "Verification failed.")
                 st.warning(f"Payment not confirmed. Reason: {message}")
  
+# =================================================================
+# DISPLAY REPORTS AFTER PAYMENT VERIFIED
+# =================================================================
+if st.session_state.payment_verified:
+    st.success("Payment verified ✅. Generating your visualization...")
+
     # ------------------ BUILD QUERY BASED ON SELECTED GROUP ------------------
     if selected_group == "Demographic Analysis":
         query = f"""
@@ -205,35 +195,33 @@ if st.button("Verify My Payment"):
         """
     else:
         query = f"SELECT * FROM exam_candidates WHERE {where_clause}"
- 
+
     df = fetch_data(query)
- 
+
     if df.empty:
         st.info("No data available for the selected filters.")
     else:
-        # ------------------ DISPLAY REPORTS ------------------
         if "Table/Matrix" in selected_charts:
             st.subheader("Data Table")
             st.dataframe(df)
- 
-            # CSV Download
+
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(label="📥 Download CSV", data=csv, file_name="report.csv", mime='text/csv')
- 
+
         if "Bar Chart" in selected_charts:
             st.subheader("Bar Chart")
             x_col = df.columns[0]
             y_col = df.columns[1] if df.shape[1] > 1 else df.columns[0]
             fig = px.bar(df, x=x_col, y=y_col, color=x_col, title=f"{selected_group} - Bar Chart")
             st.plotly_chart(fig, use_container_width=True)
- 
+
         if "Pie Chart" in selected_charts:
             st.subheader("Pie Chart")
             x_col = df.columns[0]
             y_col = df.columns[1] if df.shape[1] > 1 else df.columns[0]
             fig = px.pie(df, values=y_col, names=x_col, title=f"{selected_group} - Pie Chart", hole=0.3)
             st.plotly_chart(fig, use_container_width=True)
- 
+
         if "Line Chart" in selected_charts:
             st.subheader("Line Chart")
             x_col = df.columns[0]
