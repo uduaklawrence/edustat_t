@@ -76,12 +76,15 @@ for col in selected_columns:
         filter_values[col] = st.multiselect(f"{col}:", ["All"] + distinct_vals, default=["All"])
  
 # ------------------ BUILD FILTER CLAUSE ------------------
+filters = []
 for col, values in filter_values.items():
     if "All" not in values:
         if col == "Age":
             filters.append(f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) IN ({','.join(map(str, values))})")
         else:
-            filters.append(f"{col} IN ({','.join([f'\"{v}\"' for v in values])})")
+            value_list = ", ".join(f"'{v}'" for v in values)
+            filters.append(f"{col} IN ({value_list})")
+
 where_clause = " AND ".join(filters) if filters else "1=1"
  
 # ------------------ CHART TYPE SELECTION ------------------
