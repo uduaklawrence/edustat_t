@@ -21,12 +21,14 @@ if st.sidebar.button("📄 Create Report"):
     st.experimental_rerun()  # Reload to navigate
 
 # Logout button
-if st.session_state.get("logged_in", False):
-    if st.sidebar.button("🔓 Logout"):
-        st.session_state.logged_in = False
-        st.session_state.user_email = None
-        st.success("You have been logged out!")
-        st.switch_page("pages/landing.py")  # Redirect to landing page
+if st.sidebar.button("🔓 Logout"):
+    # Safely clear session keys
+    for key in ["logged_in", "user_email", "navigate_to"]:
+        if key in st.session_state:
+            del st.session_state[key]
+
+    st.success("✅ You have been logged out!")
+    st.switch_page("pages/Login.py")  # Redirect to landing page
 
 # -------------------- KPI CARDS --------------------
 kpi_query = "SELECT Sex, COUNT(*) AS Count FROM exam_candidates GROUP BY Sex"
