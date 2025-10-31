@@ -6,7 +6,8 @@ from datetime import datetime
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
+import io
 
 # -------------------------------
 # PAGE CONFIGURATION
@@ -33,7 +34,7 @@ saved_columns = st.session_state.get("saved_columns", [])
 saved_filters = st.session_state.get("saved_filters", {})
 saved_charts = st.session_state.get("saved_charts", ["Table/Matrix"])
 
-# Assume that the filtered dataset has been saved to session (from create_report)
+# Load dataset
 if "filtered_df" in st.session_state:
     df = st.session_state["filtered_df"]
 else:
@@ -49,57 +50,94 @@ st.subheader("📊 Filtered Dataset Preview")
 st.dataframe(df, use_container_width=True)
 
 # -------------------------------
-# VISUALIZATION SECTION
+# VISUALIZATION SECTION (UPDATED)
 # -------------------------------
 st.subheader("📈 Visualization Options")
 
-chart_type = st.selectbox(
-    "Select Chart Type",
-    ["Bar Chart", "Pie Chart", "Line Chart"],
-    index=0
-)
+# Initialize visualization storage
+if "visualizations" not in st.session_state:
+    st.session_state.visualizations = []
 
-x_col = st.selectbox("Select X-axis Column", df.columns)
-y_col = st.selectbox("Select Y-axis Column", df.columns)
+# --- Add new chart form ---
+with st.form("add_chart_form", clear_on_submit=True):
+    chart_type = st.selectbox(
+        "Select Chart Type",
+        ["Bar Chart", "Pie Chart", "Line Chart"],
+        index=0,
+        key="chart_type_select"
+    )
 
+    x_col = st.selectbox("Select X-axis Column", df.columns, key="x_col_select")
+    y_col = st.selectbox("Select Y-axis Column", df.columns, key="y_col_select")
+
+    submitted = st.form_submit_button("➕ Add Visual")
+
+    if submitted:
+        st.session_state.visualizations.append({
+            "type": chart_type,
+            "x": x_col,
+            "y": y_col
+        })
+        st.success(f"✅ Added {chart_type} ({x_col} vs {y_col})")
+
+# --- Display all added charts ---
 chart_images = []
 
-if chart_type == "Bar Chart":
-    fig = px.bar(df, x=x_col, y=y_col, color=x_col, title=f"{saved_group} - Bar Chart")
-    st.plotly_chart(fig, use_container_width=True)
+if st.session_state.visualizations:
+    st.subheader("📊 Your Visuals")
 
-    tmp_bar = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    fig.write_image(tmp_bar.name)
-    chart_images.append(tmp_bar.name)
+    for idx, chart in enumerate(st.session_state.visualizations):
+        chart_type = chart["type"]
+        x_col = chart["x"]
+        y_col = chart["y"]
 
-elif chart_type == "Pie Chart":
-    fig = px.pie(df, values=y_col, names=x_col, hole=0.3, title=f"{saved_group} - Pie Chart")
-    st.plotly_chart(fig, use_container_width=True)
+        st.markdown(f"### {idx + 1}. {chart_type} — {x_col} vs {y_col}")
 
-    tmp_pie = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    fig.write_image(tmp_pie.name)
-    chart_images.append(tmp_pie.name)
+        # Generate chart figure
+        try:
+            if chart_type == "Bar Chart":
+                fig = px.bar(df, x=x_col, y=y_col, color=x_col, title=f"{saved_group} - Bar Chart ({x_col} vs {y_col})")
+            elif chart_type == "Pie Chart":
+                fig = px.pie(df, values=y_col, names=x_col, hole=0.3, title=f"{saved_group} - Pie Chart ({x_col} vs {y_col})")
+            elif chart_type == "Line Chart":
+                fig = px.line(df, x=x_col, y=y_col, markers=True, title=f"{saved_group} - Line Chart ({x_col} vs {y_col})")
+            else:
+                continue
 
-elif chart_type == "Line Chart":
-    fig = px.line(df, x=x_col, y=y_col, markers=True, title=f"{saved_group} - Line Chart")
-    st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-    tmp_line = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    fig.write_image(tmp_line.name)
-    chart_images.append(tmp_line.name)
+            # Safer image export (fix Kaleido timeout)
+            tmp_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+            fig.write_image(tmp_chart.name, format="png", engine="kaleido", scale=2, width=800, height=400)
+            chart_images.append(tmp_chart.name)
+
+        except Exception as e:
+            st.error(f"Error rendering {chart_type}: {e}")
+
+        # Delete button for individual visuals
+        if st.button(f"🗑️ Delete '{chart_type} ({x_col} vs {y_col})'", key=f"del_{idx}"):
+            st.session_state.visualizations.pop(idx)
+            st.rerun()
+
+    # Button to clear all visuals
+    if st.button("🧹 Clear All Visuals"):
+        st.session_state.visualizations = []
+        st.rerun()
+
+else:
+    st.info("No visuals added yet. Use the form above to add one.")
 
 # -------------------------------
 # PDF GENERATION FUNCTION
 # -------------------------------
 def generate_pdf(dataframe, title, chart_paths):
-    """Generate a styled PDF report including title, table, and charts."""
+    """Generate styled PDF with title, table, and charts (each chart on a new page)."""
 
     styles = getSampleStyleSheet()
     report_title = Paragraph(f"<b>{title}</b>", styles["Title"])
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     generated_on = Paragraph(f"Generated on: {date_str}", styles["Normal"])
 
-    # Convert DataFrame to table
     data = [dataframe.columns.tolist()] + dataframe.values.tolist()
     table = Table(data)
 
@@ -113,7 +151,6 @@ def generate_pdf(dataframe, title, chart_paths):
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
     ]))
 
-    # Build PDF
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
         doc = SimpleDocTemplate(tmpfile.name, pagesize=landscape(A4))
         elements = [
@@ -123,12 +160,14 @@ def generate_pdf(dataframe, title, chart_paths):
             Spacer(1, 12),
             Paragraph("<b>Filtered Data Summary</b>", styles["Heading2"]),
             Spacer(1, 6),
-            table
+            table,
         ]
 
+        # Add each chart on a new page for clarity
         for path in chart_paths:
-            elements.append(Spacer(1, 20))
+            elements.append(PageBreak())
             elements.append(Paragraph("<b>Chart Visualization</b>", styles["Heading2"]))
+            elements.append(Spacer(1, 12))
             elements.append(Image(path, width=600, height=300))
 
         doc.build(elements)
@@ -139,14 +178,17 @@ def generate_pdf(dataframe, title, chart_paths):
 # -------------------------------
 st.subheader("📥 Download Report")
 
-pdf_path = generate_pdf(df, f"{saved_group} Report", chart_images)
+if chart_images:
+    pdf_path = generate_pdf(df, f"{saved_group} Report", chart_images)
 
-with open(pdf_path, "rb") as pdf_file:
-    st.download_button(
-        label="📄 Download Report as PDF",
-        data=pdf_file,
-        file_name=f"{saved_group.replace(' ', '_')}_report.pdf",
-        mime="application/pdf"
-    )
+    with open(pdf_path, "rb") as pdf_file:
+        st.download_button(
+            label="📄 Download Report as PDF",
+            data=pdf_file,
+            file_name=f"{saved_group.replace(' ', '_')}_report.pdf",
+            mime="application/pdf"
+        )
 
-st.success("✅ Your report is ready to download with the selected chart and filters.")
+    st.success("✅ Your report is ready to download with all visuals.")
+else:
+    st.warning("⚠️ Add at least one chart to include visuals in your PDF report.")

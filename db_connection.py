@@ -22,7 +22,6 @@ def create_connection():
  
         # Create engine
         engine = create_engine(connection_string)
-        print("Database connection established.")
         return engine
  
     except Exception as e:
