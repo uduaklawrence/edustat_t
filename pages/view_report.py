@@ -1,3 +1,7 @@
+# ==============================
+# 📄 VIEW REPORT (Optimized, Intelligent & Fixed)
+# ==============================
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -7,7 +11,6 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
-import io
 
 # -------------------------------
 # PAGE CONFIGURATION
@@ -18,13 +21,17 @@ st.title("📄 View and Export Report")
 # -------------------------------
 # SESSION VALIDATION
 # -------------------------------
-if not st.session_state.get("logged_in", False):
-    st.warning("⚠️ Please sign in to access this page.")
-    st.stop()
+def require_session(keys):
+    """Ensure required session keys are set, else stop execution."""
+    for key, message in keys.items():
+        if not st.session_state.get(key, False):
+            st.warning(message)
+            st.stop()
 
-if not st.session_state.get("payment_verified", False):
-    st.warning("⚠️ You must complete payment to view this report.")
-    st.stop()
+require_session({
+    "logged_in": "⚠️ Please sign in to access this page.",
+    "payment_verified": "⚠️ You must complete payment to view this report."
+})
 
 # -------------------------------
 # LOAD SAVED STATE FROM CREATE REPORT
@@ -34,14 +41,17 @@ saved_columns = st.session_state.get("saved_columns", [])
 saved_filters = st.session_state.get("saved_filters", {})
 saved_charts = st.session_state.get("saved_charts", ["Table/Matrix"])
 
-# Load dataset
-if "filtered_df" in st.session_state:
-    df = st.session_state["filtered_df"]
-else:
+if "filtered_df" not in st.session_state:
     st.warning("No filtered data found. Please go back and create a report first.")
     st.stop()
 
+df = st.session_state["filtered_df"]
 st.success(f"✅ Showing results for: **{saved_group}**")
+
+# -------------------------------
+# GLOBAL COLOR PALETTE
+# -------------------------------
+COLOR_PALETTE = ["#0078D7", "#FFA500", "#FFFFFF"]
 
 # -------------------------------
 # DATA PREVIEW
@@ -49,90 +59,183 @@ st.success(f"✅ Showing results for: **{saved_group}**")
 st.subheader("📊 Filtered Dataset Preview")
 st.dataframe(df, use_container_width=True)
 
-# -------------------------------
-# VISUALIZATION SECTION (UPDATED)
-# -------------------------------
-st.subheader("📈 Visualization Options")
+# ============================================================
+# AUTO INSIGHTS SECTION
+# ============================================================
+st.markdown("## 🧠 Automated Insights")
 
-# Initialize visualization storage
+chart_images = []
+
+def safe_plot(fig):
+    """Render and export chart safely."""
+    st.plotly_chart(fig, use_container_width=True)
+    try:
+        tmp_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        fig.write_image(tmp_chart.name, format="png", scale=2, width=800, height=400)
+        return tmp_chart.name
+    except Exception:
+        st.error("⚠️ Could not export chart image.")
+        return None
+
+# --- Quick Metrics ---
+st.markdown("### 📌 Key Metrics")
+st.metric("Total Records", len(df))
+if "Sex" in df.columns:
+    female_pct = (df["Sex"].str.lower().eq("female").mean() * 100)
+    st.metric("Female Representation", f"{female_pct:.1f}%")
+
+# --- Insights by Group ---
+if saved_group == "Demographic Analysis":
+    st.info("Analyzing **gender**, **age**, and **disability** demographics.")
+
+    # Gender distribution
+    if "Sex" in df.columns:
+        fig_gender = px.pie(df, names="Sex", title="Gender Distribution",
+                            hole=0.3, color_discrete_sequence=COLOR_PALETTE)
+        chart_images.append(safe_plot(fig_gender))
+        st.caption("Shows proportion of male vs. female candidates.")
+
+    # Disability
+    if "Disability" in df.columns:
+        dis_data = df["Disability"].value_counts().reset_index()
+        dis_data.columns = ["Disability", "Count"]
+
+        fig_dis = px.bar(dis_data, x="Disability", y="Count", color="Disability",
+                         color_discrete_sequence=COLOR_PALETTE,
+                         title="Disability Status Breakdown")
+        chart_images.append(safe_plot(fig_dis))
+        st.caption("Highlights inclusion of candidates with disabilities.")
+
+    # Age distribution
+    if "Age" in df.columns:
+        fig_age = px.histogram(df, x="Age", nbins=10, title="Age Distribution",
+                               color_discrete_sequence=COLOR_PALETTE)
+        chart_images.append(safe_plot(fig_age))
+        st.caption("Displays candidate age spread for demographic insight.")
+
+elif saved_group == "Geographic & Institutional Insights":
+    st.info("Exploring **regional participation** by state and exam center.")
+
+    if "State" in df.columns:
+        state_data = df["State"].value_counts().reset_index()
+        state_data.columns = ["State", "Count"]
+
+        fig_state = px.bar(state_data, x="State", y="Count", color="State",
+                           color_discrete_sequence=COLOR_PALETTE,
+                           title="Candidates by State")
+        chart_images.append(safe_plot(fig_state))
+        st.caption("Shows which states have the highest candidate participation.")
+
+    if "Centre" in df.columns:
+        center_data = df["Centre"].value_counts().reset_index().head(10)
+        center_data.columns = ["Centre", "Count"]
+
+        fig_center = px.bar(center_data, x="Centre", y="Count", color="Centre",
+                            color_discrete_sequence=COLOR_PALETTE,
+                            title="Top 10 Exam Centers by Candidates")
+        chart_images.append(safe_plot(fig_center))
+        st.caption("Highlights centers with highest participation.")
+
+elif saved_group == "Equity & Sponsorship":
+    st.info("Evaluating **sponsorship** and **equity** participation.")
+
+    if "Sponsor" in df.columns:
+        fig_sponsor = px.pie(df, names="Sponsor", title="Sponsorship Distribution",
+                             hole=0.4, color_discrete_sequence=COLOR_PALETTE)
+        chart_images.append(safe_plot(fig_sponsor))
+        st.caption("Compares sponsored vs. self-sponsored candidates.")
+
+    if {"Sponsor", "Disability"}.issubset(df.columns):
+        sponsor_dis = df.groupby(["Sponsor", "Disability"]).size().reset_index(name="Count")
+        fig_equity = px.bar(sponsor_dis, x="Sponsor", y="Count", color="Disability",
+                            barmode="group", color_discrete_sequence=COLOR_PALETTE,
+                            title="Disability vs Sponsorship")
+        chart_images.append(safe_plot(fig_equity))
+        st.caption("Shows representation of persons with disabilities among sponsored candidates.")
+
+elif saved_group == "Temporal & Progression Trends":
+    st.info("Tracking **yearly performance** and **progression trends**.")
+
+    if "ExamYear" in df.columns:
+        trend = df["ExamYear"].value_counts().sort_index().reset_index()
+        trend.columns = ["ExamYear", "Count"]
+
+        fig_year = px.line(trend, x="ExamYear", y="Count", markers=True,
+                           title="Candidate Trend Over Years",
+                           color_discrete_sequence=COLOR_PALETTE)
+        chart_images.append(safe_plot(fig_year))
+        st.caption("Shows yearly participation trends.")
+
+else:
+    st.info("No predefined insights available for this report group.")
+
+# ============================================================
+# MANUAL VISUALIZATION SECTION
+# ============================================================
+st.markdown("---")
+st.subheader("📈 Add Your Own Visuals")
+
 if "visualizations" not in st.session_state:
     st.session_state.visualizations = []
 
-# --- Add new chart form ---
 with st.form("add_chart_form", clear_on_submit=True):
-    chart_type = st.selectbox(
-        "Select Chart Type",
-        ["Bar Chart", "Pie Chart", "Line Chart"],
-        index=0,
-        key="chart_type_select"
-    )
-
-    x_col = st.selectbox("Select X-axis Column", df.columns, key="x_col_select")
-    y_col = st.selectbox("Select Y-axis Column", df.columns, key="y_col_select")
-
+    chart_type = st.selectbox("Select Chart Type", ["Bar Chart", "Pie Chart", "Line Chart"])
+    x_col = st.selectbox("X-axis Column", df.columns)
+    y_col = st.selectbox("Y-axis Column", df.columns)
     submitted = st.form_submit_button("➕ Add Visual")
 
     if submitted:
-        st.session_state.visualizations.append({
-            "type": chart_type,
-            "x": x_col,
-            "y": y_col
-        })
-        st.success(f"✅ Added {chart_type} ({x_col} vs {y_col})")
-
-# --- Display all added charts ---
-chart_images = []
+        st.session_state.visualizations.append({"type": chart_type, "x": x_col, "y": y_col})
+        st.success(f"✅ Added {chart_type}: {x_col} vs {y_col}")
+        st.rerun()
 
 if st.session_state.visualizations:
-    st.subheader("📊 Your Visuals")
+    st.subheader("🖼️ Custom Visuals")
 
     for idx, chart in enumerate(st.session_state.visualizations):
         chart_type = chart["type"]
-        x_col = chart["x"]
-        y_col = chart["y"]
-
+        x_col, y_col = chart["x"], chart["y"]
         st.markdown(f"### {idx + 1}. {chart_type} — {x_col} vs {y_col}")
 
-        # Generate chart figure
         try:
             if chart_type == "Bar Chart":
-                fig = px.bar(df, x=x_col, y=y_col, color=x_col, title=f"{saved_group} - Bar Chart ({x_col} vs {y_col})")
+                fig = px.bar(df, x=x_col, y=y_col, color=x_col,
+                             title=f"{chart_type}: {x_col} vs {y_col}",
+                             color_discrete_sequence=COLOR_PALETTE)
             elif chart_type == "Pie Chart":
-                fig = px.pie(df, values=y_col, names=x_col, hole=0.3, title=f"{saved_group} - Pie Chart ({x_col} vs {y_col})")
+                fig = px.pie(df, values=y_col, names=x_col, hole=0.3,
+                             title=f"{chart_type}: {x_col} vs {y_col}",
+                             color_discrete_sequence=COLOR_PALETTE)
             elif chart_type == "Line Chart":
-                fig = px.line(df, x=x_col, y=y_col, markers=True, title=f"{saved_group} - Line Chart ({x_col} vs {y_col})")
+                fig = px.line(df, x=x_col, y=y_col, markers=True,
+                              title=f"{chart_type}: {x_col} vs {y_col}",
+                              color_discrete_sequence=COLOR_PALETTE)
             else:
                 continue
 
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Safer image export (fix Kaleido timeout)
-            tmp_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-            fig.write_image(tmp_chart.name, format="png", engine="kaleido", scale=2, width=800, height=400)
-            chart_images.append(tmp_chart.name)
+            path = safe_plot(fig)
+            if path:
+                chart_images.append(path)
 
         except Exception as e:
-            st.error(f"Error rendering {chart_type}: {e}")
+            st.error(f"⚠️ Error rendering {chart_type}: {e}")
 
-        # Delete button for individual visuals
         if st.button(f"🗑️ Delete '{chart_type} ({x_col} vs {y_col})'", key=f"del_{idx}"):
             st.session_state.visualizations.pop(idx)
             st.rerun()
 
-    # Button to clear all visuals
     if st.button("🧹 Clear All Visuals"):
         st.session_state.visualizations = []
         st.rerun()
-
 else:
-    st.info("No visuals added yet. Use the form above to add one.")
+    st.info("No custom visuals added yet. Use the form above to add one.")
 
-# -------------------------------
-# PDF GENERATION FUNCTION
-# -------------------------------
+# ============================================================
+# PDF GENERATION & DOWNLOAD
+# ============================================================
+@st.cache_data(show_spinner=False)
 def generate_pdf(dataframe, title, chart_paths):
-    """Generate styled PDF with title, table, and charts (each chart on a new page)."""
-
+    """Generate styled PDF with title, table, and charts (each chart on new page)."""
     styles = getSampleStyleSheet()
     report_title = Paragraph(f"<b>{title}</b>", styles["Title"])
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -140,7 +243,6 @@ def generate_pdf(dataframe, title, chart_paths):
 
     data = [dataframe.columns.tolist()] + dataframe.values.tolist()
     table = Table(data)
-
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0078D7")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -162,25 +264,22 @@ def generate_pdf(dataframe, title, chart_paths):
             Spacer(1, 6),
             table,
         ]
-
-        # Add each chart on a new page for clarity
         for path in chart_paths:
             elements.append(PageBreak())
             elements.append(Paragraph("<b>Chart Visualization</b>", styles["Heading2"]))
             elements.append(Spacer(1, 12))
             elements.append(Image(path, width=600, height=300))
-
         doc.build(elements)
         return tmpfile.name
 
 # -------------------------------
-# PDF DOWNLOAD SECTION
+# PDF DOWNLOAD
 # -------------------------------
+st.markdown("---")
 st.subheader("📥 Download Report")
 
 if chart_images:
     pdf_path = generate_pdf(df, f"{saved_group} Report", chart_images)
-
     with open(pdf_path, "rb") as pdf_file:
         st.download_button(
             label="📄 Download Report as PDF",
@@ -188,7 +287,6 @@ if chart_images:
             file_name=f"{saved_group.replace(' ', '_')}_report.pdf",
             mime="application/pdf"
         )
-
     st.success("✅ Your report is ready to download with all visuals.")
 else:
-    st.warning("⚠️ Add at least one chart to include visuals in your PDF report.")
+    st.warning("⚠️ Add or generate at least one chart to include visuals in your PDF report.")
