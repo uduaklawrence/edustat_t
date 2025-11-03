@@ -109,9 +109,9 @@ st.divider()
 # MANUAL PAYMENT VERIFICATION
 # =================================================================
 st.subheader("Already Paid?")
-st.write("If you've completed your payment, verify your transaction here.")
+st.write("If you've completed your payment, you can now view your report here.")
 
-if st.button("Verify My Payment"):
+if st.button("View Report"):
     reference_to_verify = st.session_state.get('paystack_reference')
     if not reference_to_verify:
         st.error("No payment reference found. Please click 'Generate Report' to start.")
