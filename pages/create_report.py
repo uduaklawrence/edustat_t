@@ -1,8 +1,10 @@
+# ==============================
+# 📊 CREATE REPORT (with "Show Preview" button)
+# ==============================
+
 import streamlit as st
 import streamlit.components.v1 as components
-import plotly.express as px
 import pandas as pd
-import uuid
 import time
 from db_queries import fetch_data, update_payment_status
 from paystack import initialize_transaction, verify_transaction
@@ -50,7 +52,9 @@ st.subheader("Apply Filters")
 filter_values = {}
 for col in selected_columns:
     if col == "Age":
-        ages = fetch_data("SELECT DISTINCT TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age FROM exam_candidates")['Age'].tolist()
+        ages = fetch_data(
+            "SELECT DISTINCT TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age FROM exam_candidates"
+        )['Age'].tolist()
         filter_values[col] = st.multiselect(f"{col}:", ages, default=ages)
     else:
         distinct_vals = fetch_data(f"SELECT DISTINCT {col} FROM exam_candidates")[col].dropna().tolist()
@@ -68,14 +72,67 @@ for col, values in filter_values.items():
 
 where_clause = " AND ".join(filters) if filters else "1=1"
 
-# ------------------ CHART TYPE SELECTION ------------------
+# ============================================================
+# 🔍 SHOW PREVIEW BUTTON
+# ============================================================
+st.markdown("---")
+st.subheader("👀 Data Preview")
+
+if st.button("Show Preview"):
+    # Build preview query
+    if selected_group == "Demographic Analysis":
+        preview_query = f"""
+        SELECT ExamNum, ExamYear, Sex, Disability,
+               TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age
+        FROM exam_candidates
+        WHERE {where_clause}
+        LIMIT 3
+        """
+    elif selected_group == "Geographic & Institutional Insights":
+        preview_query = f"""
+        SELECT ExamNum, ExamYear, State, Centre
+        FROM exam_candidates
+        WHERE {where_clause}
+        LIMIT 3
+        """
+    elif selected_group == "Equity & Sponsorship":
+        preview_query = f"""
+        SELECT ExamNum, ExamYear, Sponsor, Sex, Disability
+        FROM exam_candidates
+        WHERE {where_clause}
+        LIMIT 3
+        """
+    elif selected_group == "Temporal & Progression Trends":
+        preview_query = f"""
+        SELECT ExamNum, ExamYear
+        FROM exam_candidates
+        WHERE {where_clause}
+        LIMIT 3
+        """
+    else:
+        preview_query = f"SELECT * FROM exam_candidates WHERE {where_clause} LIMIT 3"
+
+    try:
+        preview_df = fetch_data(preview_query)
+        if not preview_df.empty:
+            st.dataframe(preview_df, use_container_width=True)
+            st.caption("✅ Showing top 3 rows based on your selected filters.")
+        else:
+            st.warning("No data matches your current filter selection.")
+    except Exception as e:
+        st.error(f"⚠️ Unable to preview data: {e}")
+
+# ============================================================
+# CHART TYPE SELECTION
+# ============================================================
+st.markdown("---")
 st.subheader("Select Chart Types")
 chart_options = ["Table/Matrix", "Bar Chart", "Pie Chart", "Line Chart"]
 selected_charts = st.multiselect("Select chart(s):", chart_options, default=["Table/Matrix"])
 
-# =================================================================
+# ============================================================
 # GENERATE REPORT BUTTON
-# =================================================================
+# ============================================================
 if st.button("Generate Report", type="primary"):
     payment_query = f"SELECT payment FROM users WHERE email_address='{user_email}'"
     payment_status_df = fetch_data(payment_query)
@@ -105,11 +162,11 @@ if st.button("Generate Report", type="primary"):
 
 st.divider()
 
-# =================================================================
+# ============================================================
 # MANUAL PAYMENT VERIFICATION
-# =================================================================
+# ============================================================
 st.subheader("Already Paid?")
-st.write("If you've completed your payment, you can now view your report here.")
+st.write("If you've completed your payment, verify your transaction here.")
 
 if st.button("View Report"):
     reference_to_verify = st.session_state.get('paystack_reference')

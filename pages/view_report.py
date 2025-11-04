@@ -1,7 +1,4 @@
-# ==============================
 # 📄 VIEW REPORT (Optimized, Intelligent & Fixed)
-# ==============================
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -12,15 +9,11 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
 
-# -------------------------------
 # PAGE CONFIGURATION
-# -------------------------------
 st.set_page_config(page_title="View Report", layout="wide")
 st.title("📄 View and Export Report")
 
-# -------------------------------
 # SESSION VALIDATION
-# -------------------------------
 def require_session(keys):
     """Ensure required session keys are set, else stop execution."""
     for key, message in keys.items():
