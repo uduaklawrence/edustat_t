@@ -1,5 +1,6 @@
 from PIL import Image
 
+## Function to fade an image and save it
 def fade_and_save(input_path, output_path, alpha=80):
     img = Image.open(input_path).convert("RGBA")
 
@@ -13,4 +14,5 @@ def fade_and_save(input_path, output_path, alpha=80):
     img.save(output_path, format="PNG")
     print(f"✅ Faded logo saved to {output_path}")
 
+# Call and save altered image
 fade_and_save('dummy_watermark.png', 'dummy_altered.png')
