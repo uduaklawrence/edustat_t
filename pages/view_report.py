@@ -61,14 +61,17 @@ chart_images = []
 
 def safe_plot(fig):
     """Render and export chart safely."""
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width = 'stretch')
+
+    tmp_path = None
     try:
-        tmp_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        fig.write_image(tmp_chart.name, format="png", scale=2, width=800, height=400)
-        return tmp_chart.name
-    except Exception:
-        st.error("⚠️ Could not export chart image.")
-        return None
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_chart:
+            fig.write_image(tmp_chart.name, format="png", scale=2, width=800, height=400)
+            tmp_path = tmp_chart.name
+    except Exception as e:
+        st.error(f"⚠️ Could not export chart image: {e}")
+        
+    return tmp_path
 
 # --- Quick Metrics ---
 st.markdown("### 📌 Key Metrics")
