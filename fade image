@@ -1,0 +1,16 @@
+from PIL import Image
+
+def fade_and_save(input_path, output_path, alpha=80):
+    img = Image.open(input_path).convert("RGBA")
+
+    # Apply alpha to all pixels
+    new_data = []
+    for r, g, b, a in img.getdata():
+        new_data.append((r, g, b, int(a * (alpha / 255))))
+    img.putdata(new_data)
+
+    # Save to disk
+    img.save(output_path, format="PNG")
+    print(f"✅ Faded logo saved to {output_path}")
+
+fade_and_save('dummy_watermark.png', 'dummy_altered.png')
