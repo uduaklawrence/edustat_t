@@ -285,7 +285,7 @@ if chart_images:
         pdf_bytes.seek(0)
 
         # apply watermark
-    pdf = add_watermark(input_pdf_stream=pdf_bytes, watermark_image_path="dummy_altered.png")
+    pdf = add_watermark(input_pdf_stream=pdf_bytes, watermark_image_path="altered_edustat.jpg")
 
     st.download_button(
             label="📄 Download Report as PDF",
