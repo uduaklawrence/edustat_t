@@ -1,0 +1,18 @@
+from PIL import Image
+
+## Function to fade an image and save it
+def fade_and_save(input_path, output_path, alpha=50):
+    img = Image.open(input_path).convert("RGBA")
+
+    # Apply alpha to all pixels
+    new_data = []
+    for r, g, b, a in img.getdata():
+        new_data.append((r, g, b, int(a * (alpha / 255))))
+    img.putdata(new_data)
+
+    # Save to disk
+    img.save(output_path, format="PNG")
+    print(f"✅ Faded logo saved to {output_path}")
+
+# Call and save altered image
+fade_and_save('edustat image.jpg', 'altered_edustat.jpg')
