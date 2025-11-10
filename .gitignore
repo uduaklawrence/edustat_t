@@ -9,6 +9,7 @@ __pycache__/
 #image and pdf giles
 *.png
 *.pdf
+*.ipynb
 
 # Distribution / packaging
 .Python
