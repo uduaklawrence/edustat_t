@@ -8,6 +8,9 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
+from watermark import add_watermark
+# import bytesIO
+from io import BytesIO
 
 # PAGE CONFIGURATION
 st.set_page_config(page_title="View Report", layout="wide")
@@ -61,14 +64,17 @@ chart_images = []
 
 def safe_plot(fig):
     """Render and export chart safely."""
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width = 'stretch')
+
+    tmp_path = None
     try:
-        tmp_chart = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        fig.write_image(tmp_chart.name, format="png", scale=2, width=800, height=400)
-        return tmp_chart.name
-    except Exception:
-        st.error("⚠️ Could not export chart image.")
-        return None
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_chart:
+            fig.write_image(tmp_chart.name, format="png", scale=2, width=800, height=400)
+            tmp_path = tmp_chart.name
+    except Exception as e:
+        st.error(f"⚠️ Could not export chart image: {e}")
+        
+    return tmp_path
 
 # --- Quick Metrics ---
 st.markdown("### 📌 Key Metrics")
@@ -274,9 +280,16 @@ st.subheader("📥 Download Report")
 if chart_images:
     pdf_path = generate_pdf(df, f"{saved_group} Report", chart_images)
     with open(pdf_path, "rb") as pdf_file:
-        st.download_button(
+        # add watermark to PDF
+        pdf_bytes = BytesIO(pdf_file.read())
+        pdf_bytes.seek(0)
+
+        # apply watermark
+    pdf = add_watermark(input_pdf_stream=pdf_bytes, watermark_image_path="altered_edustat.jpg")
+
+    st.download_button(
             label="📄 Download Report as PDF",
-            data=pdf_file,
+            data=pdf,
             file_name=f"{saved_group.replace(' ', '_')}_report.pdf",
             mime="application/pdf"
         )
