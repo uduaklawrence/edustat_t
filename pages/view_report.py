@@ -44,6 +44,16 @@ if "filtered_df" not in st.session_state:
 df = st.session_state["filtered_df"]
 st.success(f"✅ Showing results for: **{saved_group}**")
 
+# --- Quick Metrics ---
+st.markdown("### 📌 Key Metrics")
+col1, col2 = st.columns(2)
+with col1:
+ st.metric("Total Candidates", len(df))
+with col2:
+ if "Sex" in df.columns:
+    female_pct = (df["Sex"].str.lower().eq("female").mean() * 100)
+    st.metric("Female Representation", f"{female_pct:.1f}%")
+
 # -------------------------------
 # GLOBAL COLOR PALETTE
 # -------------------------------
@@ -52,8 +62,53 @@ COLOR_PALETTE = ["#0078D7", "#FFA500", "#FFFFFF"]
 # -------------------------------
 # DATA PREVIEW
 # -------------------------------
-st.subheader("📊 Filtered Dataset Preview")
-st.dataframe(df, use_container_width=True)
+st.subheader("📊 Candidates Report")
+summary_items = []
+
+# Total candidates 
+summary_items.append(("Total Candidates", len(df)))
+
+# ExamYear (frequency)
+if "ExamYear" in df.columns:
+    year_counts = df["ExamYear"].value_counts().sort_index()
+    for year, count in year_counts.items():
+        summary_items.append((f"Exam Year {year}", count))
+
+# Sex distribution
+if "Sex" in df.columns:
+    sex_counts = df["Sex"].value_counts()
+    for k, v in sex_counts.items():
+        summary_items.append((f"Sex — {k}", v))
+
+# Disability
+if "Disability" in df.columns:
+    dis_counts = df["Disability"].value_counts()
+    for k, v in dis_counts.items():
+        summary_items.append((f"Disability — {k}", v))
+
+# Age (most common age)
+if "Age" in df.columns:
+    age_counts = df["Age"].value_counts().sort_values(ascending=False)
+    top_age = age_counts.index[0]
+    top_age_count = age_counts.iloc[0]
+    summary_items.append((f"Common Age", f"{top_age} years ({top_age_count} candidates)"))
+
+# Render summary cleanly
+for metric, value in summary_items:
+    st.markdown(f"""
+    <div style="
+        padding:12px; 
+        margin-bottom:8px; 
+        background:#f9f9f9; 
+        border-left: 6px solid #0078D7;
+        border-radius:6px;
+    ">
+        <b>{metric}:</b> {value}
+    </div>
+    """, unsafe_allow_html=True)
+
+# 👉 Needed for PDF generation
+summary_df = pd.DataFrame(summary_items, columns=["Metric", "Value"])
 
 # ============================================================
 # AUTO INSIGHTS SECTION
@@ -75,13 +130,6 @@ def safe_plot(fig):
         st.error(f"⚠️ Could not export chart image: {e}")
         
     return tmp_path
-
-# --- Quick Metrics ---
-st.markdown("### 📌 Key Metrics")
-st.metric("Total Records", len(df))
-if "Sex" in df.columns:
-    female_pct = (df["Sex"].str.lower().eq("female").mean() * 100)
-    st.metric("Female Representation", f"{female_pct:.1f}%")
 
 # --- Insights by Group ---
 if saved_group == "Demographic Analysis":
@@ -278,7 +326,7 @@ st.markdown("---")
 st.subheader("📥 Download Report")
 
 if chart_images:
-    pdf_path = generate_pdf(df, f"{saved_group} Report", chart_images)
+    pdf_path = generate_pdf(summary_df, f"{saved_group} Summary Report", chart_images)
     with open(pdf_path, "rb") as pdf_file:
         # add watermark to PDF
         pdf_bytes = BytesIO(pdf_file.read())
