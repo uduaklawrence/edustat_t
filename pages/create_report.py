@@ -101,7 +101,7 @@ if st.button("Show Preview"):
     preview_query = f"SELECT * FROM exam_candidates WHERE {where_clause} LIMIT 3"
     preview_df = fetch_data(preview_query)
     if not preview_df.empty:
-        st.dataframe(preview_df, use_container_width=True)
+        st.dataframe(preview_df, width='stretch')
         st.caption("✅ Showing top 3 rows based on your selected filters.")
     else:
         st.warning("No data matches your current filter selection.")

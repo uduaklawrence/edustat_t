@@ -57,20 +57,20 @@ with col1:
     yearly_df = fetch_data("SELECT ExamYear, COUNT(*) AS Count FROM exam_candidates GROUP BY ExamYear")
     if not yearly_df.empty:
         fig = px.bar(yearly_df, x='ExamYear', y='Count', color='ExamYear', title="Candidates per Year")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
  
 # Gender distribution
 with col2:
     if not kpi_df.empty:
         fig = px.pie(kpi_df, values='Count', names='Sex', hole=0.3, title="Overall Male vs Female")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
  
 # Top 3 Centres
 with col3:
     centres_df = fetch_data("SELECT Centre, COUNT(*) AS Count FROM exam_candidates GROUP BY Centre ORDER BY COUNT(*) DESC LIMIT 3")
     if not centres_df.empty:
         fig = px.bar(centres_df, x='Centre', y='Count', color='Centre', title="Top 3 Centres")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
  
 # -------------------- REPORT LINK --------------------
 st.subheader("📑 Create Custom Reports")

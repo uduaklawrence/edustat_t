@@ -11,6 +11,10 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from watermark import add_watermark
 # import bytesIO
 from io import BytesIO
+import warnings
+
+# Suppress deprecation warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 # PAGE CONFIGURATION
 st.set_page_config(page_title="View Report", layout="wide")
@@ -53,7 +57,7 @@ COLOR_PALETTE = ["#0078D7", "#FFA500", "#FFFFFF"]
 # DATA PREVIEW
 # -------------------------------
 st.subheader("📊 Filtered Dataset Preview")
-st.dataframe(df, use_container_width=True)
+st.dataframe(df, width='stretch')
 
 # ============================================================
 # AUTO INSIGHTS SECTION
@@ -64,7 +68,9 @@ chart_images = []
 
 def safe_plot(fig):
     """Render and export chart safely."""
-    st.plotly_chart(fig, width = 'stretch')
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        st.plotly_chart(fig, width='stretch')
 
     tmp_path = None
     try:
