@@ -45,12 +45,29 @@ col4.metric("♿ Disabilities", f"{disability_count:,}")
  
 # -------------------- DATA INSPECT --------------------
 st.header("🔍 Inspect the Data")
-df = fetch_data("SELECT * FROM exam_candidates LIMIT 10")
-st.dataframe(df)
+# Modify the query to summarize data based on ExamYear and State
+aggregated_query = """
+SELECT ExamYear, State, COUNT(*) AS NumberOfCandidates
+FROM exam_candidates
+GROUP BY ExamYear, State
+"""
+aggregated_data = fetch_data(aggregated_query)
+
+# Create a dropdown for state selection
+states = aggregated_data['State'].unique()  # Get unique states
+selected_state = st.selectbox('Select State to Filter', options=['All States'] + list(states))
+
+# Apply filter based on selected state
+if selected_state != 'All States':
+    aggregated_data = aggregated_data[aggregated_data['State'] == selected_state]
+
+# Display the table without the 'State' column
+aggregated_data = aggregated_data.drop(columns=['State'])
+st.dataframe(aggregated_data)
  
 # -------------------- QUICK INSIGHTS --------------------
 st.header("📊 Quick Insights")
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
  
 # Candidates per Year
 with col1:
@@ -66,11 +83,11 @@ with col2:
         st.plotly_chart(fig, width='stretch')
  
 # Top 3 Centres
-with col3:
-    centres_df = fetch_data("SELECT Centre, COUNT(*) AS Count FROM exam_candidates GROUP BY Centre ORDER BY COUNT(*) DESC LIMIT 3")
-    if not centres_df.empty:
-        fig = px.bar(centres_df, x='Centre', y='Count', color='Centre', title="Top 3 Centres")
-        st.plotly_chart(fig, width='stretch')
+st.markdown("---") 
+st.subheader("Top 3 Centres")
+centres_df = fetch_data("SELECT Centre, State, COUNT(*) AS Registered_candidates FROM exam_candidates GROUP BY Centre, State ORDER BY COUNT(*) DESC LIMIT 3")
+# Display the result as a table
+st.dataframe(centres_df)
  
 # -------------------- REPORT LINK --------------------
 st.subheader("📑 Create Custom Reports")

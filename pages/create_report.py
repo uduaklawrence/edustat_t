@@ -53,9 +53,9 @@ selected_group = st.selectbox("Select Insight Group", insight_groups)
 
 # ------------------ COLUMN SELECTION ------------------
 columns_map = {
-    "Demographic Analysis": ["ExamNum", "ExamYear", "Sex", "Disability", "Age"],
-    "Geographic & Institutional Insights": ["ExamNum", "ExamYear", "State", "Centre"],
-    "Equity & Sponsorship": ["ExamNum", "ExamYear", "Sponsor", "Sex", "Disability"],
+    "Demographic Analysis": ["ExamYear", "Sex", "Disability", "Age"],
+    "Geographic & Institutional Insights": ["ExamYear", "State", "Centre"],
+    "Equity & Sponsorship": ["ExamYear", "Sponsor", "Sex", "Disability"],
     "Temporal & Progression Trends": ["ExamYear"],
 }
 available_columns = columns_map[selected_group]
@@ -98,13 +98,63 @@ st.markdown("---")
 st.subheader("👀 Data Preview")
 
 if st.button("Show Preview"):
-    preview_query = f"SELECT * FROM exam_candidates WHERE {where_clause} LIMIT 3"
-    preview_df = fetch_data(preview_query)
-    if not preview_df.empty:
-        st.dataframe(preview_df, width='stretch')
-        st.caption("✅ Showing top 3 rows based on your selected filters.")
+    if selected_group == "Demographic Analysis":
+        preview_query = f"""
+        SELECT Sex, Disability,
+               TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age,
+               COUNT(*) AS Candidates
+        FROM exam_candidates
+        WHERE {where_clause}
+        GROUP BY Sex, Disability, Age
+        ORDER BY Candidates DESC
+        LIMIT 10
+        """
+
+    elif selected_group == "Geographic & Institutional Insights":
+        preview_query = f"""
+        SELECT State, Centre, COUNT(*) AS Candidates
+        FROM exam_candidates
+        WHERE {where_clause}
+        GROUP BY State, Centre
+        ORDER BY Candidates DESC
+        LIMIT 10
+        """
+
+    elif selected_group == "Equity & Sponsorship":
+        preview_query = f"""
+        SELECT Sponsor, Sex, Disability, COUNT(*) AS Candidates
+        FROM exam_candidates
+        WHERE {where_clause}
+        GROUP BY Sponsor, Sex, Disability
+        ORDER BY Candidates DESC
+        LIMIT 10
+        """
+
+    elif selected_group == "Temporal & Progression Trends":
+        preview_query = f"""
+        SELECT ExamYear, COUNT(*) AS Candidates
+        FROM exam_candidates
+        WHERE {where_clause}
+        GROUP BY ExamYear
+        ORDER BY Candidates DESC
+        LIMIT 10
+        """
+
     else:
-        st.warning("No data matches your current filter selection.")
+        preview_query = f"""
+        SELECT ExamYear, COUNT(*) AS Count
+        FROM exam_candidates
+        WHERE {where_clause}
+        GROUP BY ExamYear
+        LIMIT 10
+        """
+
+    preview_df = fetch_data(preview_query)
+
+    if preview_df.empty:
+        st.warning("No data matches your filter selection.")
+    else:
+        st.dataframe(preview_df, use_container_width=True)
 
 # ============================================================
 # CHART TYPE SELECTION
@@ -298,28 +348,28 @@ if st.button("Verify My Payment", type="primary"):
 
         if saved_group == "Demographic Analysis":
             query = f"""
-            SELECT ExamNum, ExamYear, Sex, Disability,
+            SELECT ExamYear, Sex, Disability,
                    TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age
             FROM exam_candidates
             WHERE {saved_where}
             """
         elif saved_group == "Geographic & Institutional Insights":
             query = f"""
-            SELECT ExamNum, ExamYear, State, Centre, COUNT(*) AS Count
+            SELECT ExamYear, State, Centre, COUNT(*) AS Count
             FROM exam_candidates
             WHERE {saved_where}
             GROUP BY State, Centre
             """
         elif saved_group == "Equity & Sponsorship":
             query = f"""
-            SELECT ExamNum, ExamYear, Sponsor, Sex, Disability, COUNT(*) AS Count
+            SELECT ExamYear, Sponsor, Sex, Disability, COUNT(*) AS Count
             FROM exam_candidates
             WHERE {saved_where}
             GROUP BY Sponsor, Sex, Disability
             """
         elif saved_group == "Temporal & Progression Trends":
             query = f"""
-            SELECT ExamNum, ExamYear, COUNT(*) AS Count
+            SELECT ExamYear, COUNT(*) AS Count
             FROM exam_candidates
             WHERE {saved_where}
             GROUP BY ExamYear
