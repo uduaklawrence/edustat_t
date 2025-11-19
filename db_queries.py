@@ -233,3 +233,4 @@ def fetch_single_report(report_id, user_id):
         AND user_id = :uid
     """
     return fetch_data(query, {"rid": report_id, "uid": user_id})
+
