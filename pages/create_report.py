@@ -7,9 +7,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 import os
 import time
-from datetime import datetime, timedelta
 import base64
-
+from datetime import datetime
 from db_queries import (
     fetch_data,
     update_payment_status,
@@ -18,17 +17,17 @@ from db_queries import (
     mark_invoice_paid_by_paystack_ref,
     save_user_report,
 )
-
 from paystack import initialize_transaction, verify_transaction
-from invoice_pdf import generate_invoice_pdf
+from invoice_pdf import generate_invoice_pdf  # ✅ make sure this file exists
 
 
 # ------------------ SETTINGS ------------------
 SUBSCRIPTION_AMOUNT = 20000.00  # ₦
-WATERMARK_PATH = r"C:\Users\uludoh\Desktop\edustat_t\assets\image 2.jpg"
+WATERMARK_PATH = r"C:\Users\uludoh\Desktop\edustat_t\assets\image 2.jpg"  # Update with the correct path
 
 
 def get_base64_image(img_path):
+    """Converts an image to a base64 encoded string."""
     with open(img_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
 
@@ -122,41 +121,18 @@ where_clause = " AND ".join(filters) if filters else "1=1"
 
 
 # ============================================================
-# 🔍 DATA PREVIEW
+# 🔍 SHOW PREVIEW
 # ============================================================
 st.markdown("---")
 st.subheader("👀 Data Preview")
 
 if st.button("Show Preview"):
-
-    # Build selected column list
-    if selected_columns:
-        # Convert Age to SQL expression
-        sql_columns = []
-        for col in selected_columns:
-            if col == "Age":
-                sql_columns.append("TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age")
-            else:
-                sql_columns.append(col)
-
-        column_list_sql = ", ".join(sql_columns)
-    else:
-        column_list_sql = "*"   # fallback
-
-    preview_query = f"""
-        SELECT {column_list_sql}
-        FROM exam_candidates
-        WHERE {where_clause}
-        LIMIT 5;
-    """
-
-    preview_df = fetch_data(preview_query)
-
-    if preview_df is not None and not preview_df.empty:
+    preview_df = fetch_data(f"SELECT * FROM exam_candidates WHERE {where_clause} LIMIT 3")
+    if not preview_df.empty:
         st.dataframe(preview_df, use_container_width=True)
-        st.caption("✅ Showing first 5 rows based on your selected columns and filters.")
     else:
-        st.warning("No data matches your current selections.")
+        st.warning("No data matches your current filter selection.")
+
 
 # ============================================================
 # CHART TYPE SELECTION
@@ -493,12 +469,12 @@ if st.session_state.payment_verified:
 
     # ------------------ SAVE REPORT HISTORY (30 DAYS) ------------------
     save_user_report(
-    st.session_state.user_id,
-    invoice_ref,
-    st.session_state.saved_group,
-    st.session_state.saved_filters,
-    st.session_state.saved_charts,
-    pdf_path
-)
+        st.session_state.user_id,
+        invoice_ref,
+        st.session_state.saved_group,
+        st.session_state.saved_filters,
+        st.session_state.saved_charts,
+        pdf_path
+    )
 
     st.info("🗂️ Your report has been saved to your account. Available for 30 days.")

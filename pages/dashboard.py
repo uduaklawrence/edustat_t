@@ -52,15 +52,15 @@ FROM exam_candidates
 GROUP BY ExamYear, State
 """
 aggregated_data = fetch_data(aggregated_query)
-
+ 
 # Create a dropdown for state selection
 states = aggregated_data['State'].unique()  # Get unique states
 selected_state = st.selectbox('Select State to Filter', options=['All States'] + list(states))
-
+ 
 # Apply filter based on selected state
 if selected_state != 'All States':
     aggregated_data = aggregated_data[aggregated_data['State'] == selected_state]
-
+ 
 # Display the table without the 'State' column
 aggregated_data = aggregated_data.drop(columns=['State'])
 st.dataframe(aggregated_data)
@@ -74,16 +74,16 @@ with col1:
     yearly_df = fetch_data("SELECT ExamYear, COUNT(*) AS Count FROM exam_candidates GROUP BY ExamYear")
     if not yearly_df.empty:
         fig = px.bar(yearly_df, x='ExamYear', y='Count', color='ExamYear', title="Candidates per Year")
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
  
 # Gender distribution
 with col2:
     if not kpi_df.empty:
         fig = px.pie(kpi_df, values='Count', names='Sex', hole=0.3, title="Overall Male vs Female")
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
  
 # Top 3 Centres
-st.markdown("---") 
+st.markdown("---")
 st.subheader("Top 3 Centres")
 centres_df = fetch_data("SELECT Centre, State, COUNT(*) AS Registered_candidates FROM exam_candidates GROUP BY Centre, State ORDER BY COUNT(*) DESC LIMIT 3")
 # Display the result as a table
