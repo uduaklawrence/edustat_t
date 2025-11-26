@@ -29,12 +29,12 @@ def watermark(input_pdf_stream, text = None, image_path = None):
 
     # image watermark
     elif image_path:
-        logo_width, logo_height = width * 0.6, height * 0.5
+        logo_width, logo_height = width * 0.7, height * 0.3
         x = -logo_width / 2
         y = -logo_height / 2
 
         c.translate(width/2, height/2)  # move origin to center of page
-        c.rotate(45)  # rotate image
+        c.rotate(40)  # rotate image
         c.drawImage(image_path,
                     x = x,
                     y = y,
