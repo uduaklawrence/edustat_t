@@ -1,40 +1,29 @@
-# ==============================
-# 🧾 invoice_pdf.py (Final - Local Image Watermark + Modern Layout)
-# ==============================
-
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-import os
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+)
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.units import inch
 from datetime import datetime
-from db_queries import fetch_data
-
-# Register font for ₦ and Unicode support
-pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
-
-
-def add_image_watermark(canvas_obj, watermark_path):
-    """Draws a semi-transparent watermark image in the center."""
-    canvas_obj.saveState()
-    try:
-        width, height = A4
-        img_width, img_height = 300, 300  # adjust as needed
-        x = (width - img_width) / 2
-        y = (height - img_height) / 2
-        canvas_obj.setFillAlpha(0.15)  # transparency
-        canvas_obj.drawImage(watermark_path, x, y, width=img_width, height=img_height, mask='auto')
-        canvas_obj.setFillAlpha(1)  # reset
-    except Exception as e:
-        print(f"⚠️ Watermark error: {e}")
-    finally:
-        canvas_obj.restoreState()
-
-
+import os
+from io import BytesIO
+from watermark import add_watermark
+ 
+ 
+# ------------------ CONFIG ------------------
+OUTPUT_DIR = "generated_invoices"
+ 
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
+ 
+ 
+# ------------------ MAIN FUNCTION ------------------
 def generate_invoice_pdf(
     invoice_ref: str,
     user_email: str,
@@ -43,91 +32,115 @@ def generate_invoice_pdf(
     selected_group: str,
     selected_columns: list,
     status: str = "Pending Payment",
-    watermark_path: str = r"C:\Users\uludoh\Desktop\edustat_t\assets\image 2.jpg",  # ✅ your local project folder image
-) -> str:
+):
     """
-    Generates a professional invoice with watermark and detailed layout.
+    Generates a professional invoice PDF (NO WATERMARK).
     """
-
-    # Ensure invoices folder exists
-    os.makedirs("invoices", exist_ok=True)
-    filename = f"invoices/{invoice_ref}.pdf"
-
-    # Get user name
-    user_df = fetch_data(f"SELECT name FROM users WHERE email_address='{user_email}' LIMIT 1")
-    user_name = user_df["name"].iloc[0] if not user_df.empty else user_email.split("@")[0].title()
-
-    # PDF Layout setup
+ 
+    # Prepare file name
+    safe_ref = invoice_ref.replace("/", "_")
+    pdf_path = os.path.join(OUTPUT_DIR, f"Invoice_{safe_ref}.pdf")
+ 
+    # Create the document
     doc = SimpleDocTemplate(
-        filename,
-        pagesize=A4,
-        rightMargin=25,
-        leftMargin=25,
-        topMargin=40,
-        bottomMargin=25,
+        pdf_path, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=80, bottomMargin=50
     )
-
-    styles = getSampleStyleSheet()
-    normal = ParagraphStyle("Normal", parent=styles["Normal"], fontName="HeiseiMin-W3", fontSize=11)
-    bold = ParagraphStyle("Bold", parent=styles["Normal"], fontName="HeiseiMin-W3", fontSize=12, leading=14)
-    small = ParagraphStyle("Small", parent=styles["Normal"], fontName="HeiseiMin-W3", fontSize=10, textColor=colors.gray)
-
     elements = []
-
-    # Header
-    elements.append(Paragraph("<b>EDUSTAT ANALYTICS</b>", bold))
-    elements.append(Paragraph("Custom Report Invoice", normal))
+    styles = getSampleStyleSheet()
+ 
+    # Custom styles
+    title_style = styles["Title"]
+    title_style.alignment = TA_CENTER
+    normal = styles["Normal"]
+    normal.spaceAfter = 12
+ 
+    # ---------------- HEADER ----------------
+    elements.append(Paragraph("<b>EDUSTAT REPORTING PLATFORM</b>", title_style))
+    elements.append(Spacer(1, 12))
+    elements.append(Paragraph("<b>INVOICE</b>", styles["Heading2"]))
     elements.append(Spacer(1, 10))
-
-    # Info Section
+ 
+    # Invoice Info
+    invoice_date = datetime.now().strftime("%B %d, %Y")
+    user_display = user_email.split("@")[0].replace(".", " ").title()
+ 
     info_data = [
-        [f"<b>Name:</b> {user_name}", f"<b>Invoice Date:</b> {datetime.now().strftime('%b %d, %Y')}"],
-        [f"<b>Invoice Reference:</b> {invoice_ref}", f"<b>Status:</b> {status}"],
-        [f"<b>Report Group:</b> {selected_group}", f"<b>Email:</b> {user_email}"],
+        ["Invoice Reference:", invoice_ref],
+        ["Customer Name:", user_display],
+        ["Email Address:", user_email],
+        ["Report Group:", selected_group],
+        ["Date:", invoice_date],
     ]
-    info_table = Table(info_data, colWidths=[100 * mm, 80 * mm])
+ 
+    info_table = Table(info_data, colWidths=[150, 350])
     info_table.setStyle(
-        TableStyle([
-            ("FONTNAME", (0, 0), (-1, -1), "HeiseiMin-W3"),
-            ("FONTSIZE", (0, 0), (-1, -1), 10),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
     )
     elements.append(info_table)
-    elements.append(Spacer(1, 15))
-
-    # Items Table
-    item_data = [["Item", "Quantity"]]
+    elements.append(Spacer(1, 20))
+ 
+    # ---------------- TABLE OF ITEMS ----------------
+    table_data = [["Selected Item", "Quantity", "Amount (₦)"]]
     for col in selected_columns:
-        item_data.append([col, "1"])
-    item_data.append(["Grand Total", f"₦{amount:,.2f}"])
-
-    item_table = Table(item_data, colWidths=[120 * mm, 50 * mm])
-    item_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f7e186")),
-            ("FONTNAME", (0, 0), (-1, -1), "HeiseiMin-W3"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.gray),
-            ("ALIGN", (1, 1), (-1, -1), "CENTER"),
-            ("BACKGROUND", (0, 1), (-1, -2), colors.whitesmoke),
-            ("BACKGROUND", (0, -1), (-1, -1), colors.lightgrey),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-        ])
+        table_data.append([col, "1", "-"])
+ 
+    table_data.append(["", "Grand Total", f"₦{amount:,.2f}"])
+ 
+    table = Table(table_data, colWidths=[250, 100, 150])
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("BACKGROUND", (-3, -1), (-1, -1), colors.whitesmoke),
+            ]
+        )
     )
-    elements.append(item_table)
-    elements.append(Spacer(1, 15))
-
-    # Subtotal and Notes
-    elements.append(Paragraph(f"<b>Sub Total:</b> ₦{amount:,.2f}", bold))
+    elements.append(table)
+    elements.append(Spacer(1, 20))
+ 
+    # ---------------- STATUS ----------------
+    if "PAID" in status.upper():
+        status_html = '<b>Status:</b> <font color="green">PAID ✅</font>'
+    else:
+        status_html = '<b>Status:</b> <font color="orange">Pending Payment</font>'
+ 
+    elements.append(Paragraph(status_html, normal))
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("Please complete your payment via Paystack to activate your report access.", small))
-    elements.append(Paragraph("For support, contact support@edustat.ng", small))
-
-    # Watermark callback
-    def add_watermark(canvas_obj, doc):
-        add_image_watermark(canvas_obj, watermark_path)
-
-    # Build PDF
-    doc.build(elements, onFirstPage=add_watermark, onLaterPages=add_watermark)
-
-    return filename
+ 
+    # ---------------- DESCRIPTION ----------------
+    elements.append(Paragraph(f"<b>Description:</b> {description}", normal))
+    elements.append(Spacer(1, 30))
+ 
+    # ---------------- FOOTER ----------------
+    elements.append(Paragraph("<i>Thank you for using Edustat Reporting Platform.</i>", normal))
+ 
+    doc.build(elements)
+ 
+    with open(pdf_path, "rb") as pdf_file:
+        pdf_bytes = BytesIO(pdf_file.read())
+        pdf_bytes.seek(0)
+ 
+    watermarked_pdf = add_watermark(
+        input_pdf_stream=pdf_bytes,
+        watermark_image_path="altered_edustat.jpg"
+    )
+ 
+    with open(pdf_path, "wb") as output_file:
+        output_file.write(watermarked_pdf.read())
+ 
+    return pdf_path

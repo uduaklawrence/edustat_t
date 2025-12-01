@@ -289,7 +289,7 @@ def generate_pdf(dataframe, title, chart_paths):
     generated_on = Paragraph(f"Generated on: {date_str}", styles["Normal"])
 
     data = [dataframe.columns.tolist()] + dataframe.values.tolist()
-    table = Table(data)
+    table = Table(data, colWidths=[200, 300])
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0078D7")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -298,6 +298,7 @@ def generate_pdf(dataframe, title, chart_paths):
         ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
         ("BACKGROUND", (0, 1), (-1, -1), colors.whitesmoke),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 14)
     ]))
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
@@ -315,7 +316,7 @@ def generate_pdf(dataframe, title, chart_paths):
             elements.append(PageBreak())
             elements.append(Paragraph("<b>Chart Visualization</b>", styles["Heading2"]))
             elements.append(Spacer(1, 12))
-            elements.append(Image(path, width=600, height=300))
+            elements.append(Image(path, width=700, height=400))
         doc.build(elements)
         return tmpfile.name
 

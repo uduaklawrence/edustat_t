@@ -5,21 +5,28 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import os
+import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import base64
 from db_queries import (
     fetch_data,
     update_payment_status,
     create_invoice_record,
     attach_paystack_ref_to_invoice,
     mark_invoice_paid_by_paystack_ref,
+    save_user_report,
 )
 from paystack import initialize_transaction, verify_transaction
 from invoice_pdf import generate_invoice_pdf  # ✅ make sure this file exists
 
 # ------------------ SETTINGS ------------------
 SUBSCRIPTION_AMOUNT = 20000.00  # ₦
-WATERMARK_PATH = r"C:\Users\uludoh\Desktop\edustat_t\assets\image 2.jpg"
+WATERMARK_PATH = r"altered_edustat.jpg"
+
+def get_base64_image(img_path):
+    with open(img_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
 
 # ------------------ AUTH CHECK ------------------
 if not st.session_state.get("logged_in", False):
@@ -41,6 +48,7 @@ st.session_state.setdefault("saved_columns", None)
 st.session_state.setdefault("saved_filters", None)
 st.session_state.setdefault("saved_charts", None)
 st.session_state.setdefault("saved_where_clause", None)
+st.session_state.setdefault("invoice_downloaded", False)
 
 # ------------------ INSIGHT GROUP SELECTION ------------------
 insight_groups = [
@@ -63,16 +71,39 @@ selected_columns = st.multiselect(
     "Select Columns to Filter", available_columns, default=available_columns
 )
 
+# ------------------ CACHING DISTINCT VALUES ------------------
+ 
+@st.cache_data
+def get_distinct_values(col):
+    query = f"SELECT DISTINCT {col} FROM exam_candidates"
+    return fetch_data(query)[col].dropna().tolist()
+
 # ------------------ FILTERS ------------------
 st.subheader("Apply Filters")
 
 filter_values = {}
 for col in selected_columns:
     if col == "Age":
+        # Define age groups
+        age_groups = ["Below 18", "Above 18"]
+
+        # Allow users to select age groups (Below 18 or Above 18)
+        selected_age_groups = st.multiselect(
+            "Select Age Groups:",
+            age_groups,
+            default=age_groups  # Default to both groups selected
+        )
         ages = fetch_data(
             "SELECT DISTINCT TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age FROM exam_candidates"
         )["Age"].tolist()
-        filter_values[col] = st.multiselect(f"{col}:", ages, default=ages)
+        # Now filter the ages based on selected groups
+        selected_ages = []
+        if "Below 18" in selected_age_groups:
+            selected_ages.extend([age for age in ages if age < 18])
+        if "Above 18" in selected_age_groups:
+            selected_ages.extend([age for age in ages if age >= 18])
+             # If no groups are selected, default to all ages
+        filter_values["Age"] = selected_ages if selected_ages else ages
     else:
         distinct_vals = fetch_data(f"SELECT DISTINCT {col} FROM exam_candidates")[col].dropna().tolist()
         filter_values[col] = st.multiselect(f"{col}:", ["All"] + distinct_vals, default=["All"])
@@ -82,9 +113,19 @@ filters = []
 for col, values in filter_values.items():
     if "All" not in values:
         if col == "Age":
-            filters.append(
-                f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) IN ({','.join(map(str, values))})"
-            )
+             # Create the WHERE clause for age based on selected ranges
+            if "Below 18" in selected_age_groups and "Above 18" in selected_age_groups:
+                filters.append(
+                    f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) < 18 OR TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 18"
+                )
+            elif "Below 18" in selected_age_groups:
+                filters.append(
+                    f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) < 18"
+                )
+            elif "Above 18" in selected_age_groups:
+                filters.append(
+                    f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 18"
+                )
         else:
             value_list = ", ".join(f"'{v}'" for v in values)
             filters.append(f"{col} IN ({value_list})")
@@ -106,7 +147,7 @@ if st.button("Show Preview"):
         FROM exam_candidates
         WHERE {where_clause}
         GROUP BY Sex, Disability, Age
-        ORDER BY Candidates DESC
+        ORDER BY Age ASC
         LIMIT 10
         """
 
@@ -224,87 +265,81 @@ if st.button("Generate Report", type="primary"):
             )
 
             # ✅ Display formatted invoice in UI
+            watermark_base64 = get_base64_image(WATERMARK_PATH)
             user_display = user_email.split("@")[0].replace(".", " ").title()
             invoice_date = datetime.now().strftime("%B %d, %Y")
-            watermark_url = f"file://{os.path.abspath(WATERMARK_PATH)}"
 
             invoice_html = f"""
-            <h2 style="text-align:center; margin-bottom:10px;">INVOICE</h2>
-            <p><b>Name:</b> {user_display}</p>
-            <p><b>Invoice No:</b> {invoice_ref}</p>
-            <p><b>Date:</b> {invoice_date}</p>
-            <p><b>Report Group:</b> {selected_group}</p>
-            <hr>
-            <table style="width:100%; border-collapse:collapse; margin-top:15px; font-size:15px;">
-                <thead>
-                    <tr style="background-color:#f2f2f2;">
-                        <th style="padding:8px; border:1px solid #ddd;">Item</th>
-                        <th style="padding:8px; border:1px solid #ddd;">Quantity</th>
-                        <th style="padding:8px; border:1px solid #ddd;">Amount (₦)</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-
-            for col in selected_columns:
-                invoice_html += f"""
-                    <tr>
-                        <td style="padding:8px; border:1px solid #ddd;">{col}</td>
-                        <td style="padding:8px; border:1px solid #ddd;">1</td>
-                        <td style="padding:8px; border:1px solid #ddd;">-</td>
-                    </tr>
-                """
-
+        <h2 style="text-align:center;">INVOICE</h2>
+        <p><b>Name:</b> {user_display}</p>
+        <p><b>Invoice No:</b> {invoice_ref}</p>
+        <p><b>Date:</b> {invoice_date}</p>
+        <p><b>Report Group:</b> {selected_group}</p>
+        <hr>
+        """
+ 
+        invoice_html += """
+        <table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr style="background-color:#f2f2f2;">
+                    <th style="padding:8px; border:1px solid #ddd;">Item</th>
+                    <th style="padding:8px; border:1px solid #ddd;">Qty</th>
+                    <th style="padding:8px; border:1px solid #ddd;">Amount (₦)</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+ 
+        for col in selected_columns:
             invoice_html += f"""
-                    <tr style="background-color:#f9f9f9;">
-                        <td colspan="2" style="text-align:right; padding:8px; border:1px solid #ddd;"><b>Grand Total</b></td>
-                        <td style="padding:8px; border:1px solid #ddd;"><b>₦{SUBSCRIPTION_AMOUNT:,.2f}</b></td>
-                    </tr>
-                </tbody>
-            </table>
-            <p style="margin-top:15px;"><b>Status:</b> <span style="color:#ff8800;">Pending Payment</span></p>
+            <tr>
+                <td style="padding:8px; border:1px solid #ddd;">{col}</td>
+                <td style="padding:8px; border:1px solid #ddd;">1</td>
+                <td style="padding:8px; border:1px solid #ddd;">-</td>
+            </tr>
             """
-
-            st.markdown(
-                f"""
-                <div style="display:flex; justify-content:center;">
-                    <div style="
-                        background-color:#ffffff;
-                        color:#000;
-                        border-radius:10px;
-                        padding:25px;
-                        width:80%;
-                        box-shadow:0 0 10px rgba(0,0,0,0.1);
-                        background-image:url('{watermark_url}');
-                        background-repeat:no-repeat;
-                        background-position:center;
-                        background-size:45%;
-                    ">
-                        {invoice_html}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+ 
+        invoice_html += f"""
+            <tr>
+                <td colspan="2" style="text-align:right; padding:8px; border:1px solid #ddd;"><b>Total</b></td>
+                <td style="padding:8px; border:1px solid #ddd;"><b>₦{SUBSCRIPTION_AMOUNT:,.2f}</b></td>
+            </tr>
+            </tbody>
+        </table>
+        <p><b>Status:</b> Pending Payment</p>
+        """
+ 
+        container = f"""
+        <div style="
+            background:white;
+            padding:25px;
+            border-radius:10px;
+            box-shadow:0 0 10px rgba(0,0,0,0.1);
+            background-image:url('data:image/jpeg;base64,{watermark_base64}');
+            background-repeat:no-repeat;
+            background-position:center;
+            background-size:45%;
+        ">{invoice_html}</div>
+        """
+ 
+        components.html(container, height=680, scrolling=True)
+ 
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                "📄 Download Invoice PDF",
+                f,
+                file_name=os.path.basename(pdf_path),
+                mime="application/pdf",
+                key="pending_invoice_download",
             )
-
-            # ✅ Download PDF
-            with open(pdf_path, "rb") as pdf_file:
-                st.download_button(
-                    "📄 Download Invoice PDF",
-                    data=pdf_file,
-                    file_name=os.path.basename(pdf_path),
-                    mime="application/pdf",
-                )
-
-            st.info("Click below to proceed with payment through Paystack.")
-        else:
-            st.error("❌ Unable to create invoice. Please try again.")
+ 
+        st.info("Proceed to payment below ⬇️")
 
 # ============================================================
 # 2️⃣ PROCEED TO PAYMENT
 # ============================================================
 if st.session_state.invoice_ref and not st.session_state.payment_verified:
-    if st.button("Proceed to Payment", type="primary"):
+    if st.button("Proceed to Payment", type="primary", key="pay_btn"):
         with st.spinner("Connecting to Paystack..."):
             api_response = initialize_transaction(email_address=user_email, amount=SUBSCRIPTION_AMOUNT)
             if api_response and api_response.get("authorization_url"):
@@ -323,9 +358,15 @@ if st.session_state.invoice_ref and not st.session_state.payment_verified:
 # 3️⃣ VERIFY PAYMENT → MARK INVOICE PAID → PREP REPORT
 # ============================================================
 st.markdown("---")
-st.subheader("✔️ Verify Payment & View Report")
+st.subheader("✔️ Verify Payment & Access Report")
 
-if st.button("Verify My Payment", type="primary"):
+# Auto-redirect after download
+if st.session_state.invoice_downloaded:
+    st.success("Invoice downloaded! Redirecting...")
+    time.sleep(2)
+    st.switch_page("pages/view_report.py")
+
+if st.button("Verify My Payment", type="primary", key="verify_btn"):
     paystack_ref = st.session_state.get("paystack_reference")
     if not paystack_ref:
         st.error("No payment reference found. Please click 'Proceed to Payment' first.")
@@ -342,7 +383,109 @@ if st.button("Verify My Payment", type="primary"):
         update_payment_status(user_email)
         st.session_state.payment_verified = True
         mark_invoice_paid_by_paystack_ref(paystack_ref)
+        st.success("Payment verified!")
+    else:
+        st.error("Verification failed.")
+        st.stop()
 
+
+# SHOW PAID INVOICE + Download + View Report
+# ============================================================
+if st.session_state.payment_verified:
+ 
+    # Build Paid invoice
+    watermark_base64 = get_base64_image(WATERMARK_PATH)
+    invoice_ref = st.session_state.invoice_ref
+    invoice_date = datetime.now().strftime("%B %d, %Y")
+    user_display = user_email.split("@")[0].replace(".", " ").title()
+ 
+    pdf_path = generate_invoice_pdf(
+        invoice_ref=invoice_ref,
+        user_email=user_email,
+        amount=SUBSCRIPTION_AMOUNT,
+        description=f"Custom Report - {st.session_state.saved_group}",
+        selected_group=st.session_state.saved_group,
+        selected_columns=st.session_state.saved_columns,
+        status="PAID ✅",
+    )
+ 
+    # HTML invoice
+    paid_html = f"""
+    <h2 style="text-align:center;">INVOICE</h2>
+    <p><b>Name:</b> {user_display}</p>
+    <p><b>Invoice No:</b> {invoice_ref}</p>
+    <p><b>Date:</b> {invoice_date}</p>
+    <p><b>Report Group:</b> {st.session_state.saved_group}</p>
+    <hr>
+    """
+ 
+    paid_html += """
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="background-color:#f2f2f2;">
+                <th style="padding:8px; border:1px solid #ddd;">Item</th>
+                <th style="padding:8px; border:1px solid #ddd;">Qty</th>
+                <th style="padding:8px; border:1px solid #ddd;">Amount (₦)</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+ 
+    for col in st.session_state.saved_columns:
+        paid_html += f"""
+        <tr>
+            <td style="padding:8px; border:1px solid #ddd;">{col}</td>
+            <td style="padding:8px; border:1px solid #ddd;">1</td>
+            <td style="padding:8px; border:1px solid #ddd;">-</td>
+        </tr>
+        """
+ 
+    paid_html += f"""
+        <tr>
+            <td colspan="2" style="text-align:right; padding:8px;"><b>Total</b></td>
+            <td style="padding:8px;"><b>₦{SUBSCRIPTION_AMOUNT:,.2f}</b></td>
+        </tr>
+        </tbody>
+    </table>
+    <p><b>Status:</b> PAID ✅</p>
+    """
+ 
+    container_paid = f"""
+    <div style="
+        background:white;
+        padding:25px;
+        border-radius:10px;
+        box-shadow:0 0 10px rgba(0,0,0,0.1);
+        background-image:url('data:image/jpeg;base64,{watermark_base64}');
+        background-repeat:no-repeat;
+        background-position:center;
+        background-size:45%;
+    ">{paid_html}</div>
+    """
+ 
+    components.html(container_paid, height=680, scrolling=True)
+ 
+ 
+    # ------------ Buttons ------------
+    col1, col2 = st.columns(2)
+ 
+    with col1:
+        with open(pdf_path, "rb") as f:
+            if st.download_button(
+                "📄 Download Paid Invoice PDF",
+                f,
+                file_name=os.path.basename(pdf_path),
+                mime="application/pdf",
+                key="paid_inv"
+            ):
+                st.session_state.invoice_downloaded = True
+                st.rerun()
+ 
+    with col2:
+        if st.button("➡️ View Report", type="primary", key="view_report"):
+            st.switch_page("pages/view_report.py")
+
+#LOAD REPORT DATA + SAVE USER HISTORY
         saved_group = st.session_state.get("saved_group")
         saved_where = st.session_state.get("saved_where_clause")
 
@@ -382,9 +525,15 @@ if st.button("Verify My Payment", type="primary"):
             st.warning("Payment verified, but no data found for your filters.")
         else:
             st.session_state.filtered_df = df
-            st.success("✅ Payment verified and report prepared.")
-            time.sleep(1)
-            st.switch_page("pages/view_report.py")
-    else:
-        msg = verification_response.get("data", {}).get("gateway_response", "Verification failed.")
-        st.warning(f"Payment not confirmed. Reason: {msg}")
+
+            # ------------------ SAVE REPORT HISTORY (30 DAYS) ------------------
+    save_user_report(
+    st.session_state.user_id,
+    invoice_ref,
+    st.session_state.saved_group,
+    st.session_state.saved_filters,
+    st.session_state.saved_charts,
+    pdf_path
+)
+ 
+    st.info("🗂️ Your report has been saved to your account. Available for 30 days.")
