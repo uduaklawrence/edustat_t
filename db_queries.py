@@ -1,13 +1,14 @@
 import pandas as pd
-from db_connection import create_connection
-import streamlit as st
 import json
 import uuid
 from datetime import datetime, timedelta
 from sqlalchemy import text
- 
+
+from db_connection import create_connection   # make sure this exists
+
+
 # =========================================================
-# 🔁 CACHING SETUP
+# ✅ CACHED FETCH (safe)
 # =========================================================
  
 @st.cache_data(ttl=300)  # cache for 5 minutes
@@ -80,7 +81,7 @@ def create_invoice_record(user_id, total, data_dict):
         INSERT INTO invoices (user_id, ref, total, data)
         VALUES (:user_id, :ref, :total, :data_json)
     """)
- 
+
     try:
         with engine.begin() as conn:
             conn.execute(query, {
@@ -100,7 +101,7 @@ def attach_paystack_ref_to_invoice(invoice_ref, paystack_ref):
     if not invoice_ref:
         st.error("Missing invoice reference.")
         return
- 
+
     engine = create_connection()
     if engine is None:
         return
@@ -114,7 +115,7 @@ def attach_paystack_ref_to_invoice(invoice_ref, paystack_ref):
             END
         WHERE ref = :invoice_ref
     """)
- 
+
     try:
         with engine.begin() as conn:
             conn.execute(query, {
@@ -141,7 +142,7 @@ def mark_invoice_paid_by_paystack_ref(paystack_ref):
             updated_at = NOW()
         WHERE JSON_EXTRACT(invoice_data, '$.paystack_reference') = :p_ref
     """)
- 
+
     try:
         with engine.begin() as conn:
             conn.execute(query, {"p_ref": paystack_ref})

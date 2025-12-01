@@ -1,7 +1,8 @@
 # ==============================
-# 📊 CREATE REPORT (Invoice + Proceed to Payment + Watermark)
+# 📊 CREATE REPORT (Invoice + Payment + Watermark + Save History)
 # ==============================
 
+import json
 import streamlit as st
 import streamlit.components.v1 as components
 import os
@@ -19,6 +20,7 @@ from db_queries import (
 )
 from paystack import initialize_transaction, verify_transaction
 from invoice_pdf import generate_invoice_pdf  # ✅ make sure this file exists
+
 
 # ------------------ SETTINGS ------------------
 SUBSCRIPTION_AMOUNT = 20000.00  # ₦
@@ -38,6 +40,7 @@ st.title("📊 Create Custom Reports")
 
 user_email = st.session_state.get("user_email")
 user_id = st.session_state.get("user_id", 0)
+
 
 # ------------------ SESSION DEFAULTS ------------------
 st.session_state.setdefault("paystack_reference", None)
@@ -59,16 +62,21 @@ insight_groups = [
 ]
 selected_group = st.selectbox("Select Insight Group", insight_groups)
 
+
 # ------------------ COLUMN SELECTION ------------------
 columns_map = {
-    "Demographic Analysis": ["ExamYear", "Sex", "Disability", "Age"],
-    "Geographic & Institutional Insights": ["ExamYear", "State", "Centre"],
-    "Equity & Sponsorship": ["ExamYear", "Sponsor", "Sex", "Disability"],
+    "Demographic Analysis": ["ExamNum", "ExamYear", "Sex", "Disability", "Age"],
+    "Geographic & Institutional Insights": ["ExamNum", "ExamYear", "State", "Centre"],
+    "Equity & Sponsorship": ["ExamNum", "ExamYear", "Sponsor", "Sex", "Disability"],
     "Temporal & Progression Trends": ["ExamYear"],
 }
+
 available_columns = columns_map[selected_group]
+
 selected_columns = st.multiselect(
-    "Select Columns to Filter", available_columns, default=available_columns
+    "Select Columns to Filter",
+    available_columns,
+    default=available_columns
 )
 
 # ------------------ CACHING DISTINCT VALUES ------------------
@@ -94,7 +102,8 @@ for col in selected_columns:
             default=age_groups  # Default to both groups selected
         )
         ages = fetch_data(
-            "SELECT DISTINCT TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age FROM exam_candidates"
+            "SELECT DISTINCT TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age "
+            "FROM exam_candidates"
         )["Age"].tolist()
         # Now filter the ages based on selected groups
         selected_ages = []
@@ -105,8 +114,11 @@ for col in selected_columns:
              # If no groups are selected, default to all ages
         filter_values["Age"] = selected_ages if selected_ages else ages
     else:
-        distinct_vals = fetch_data(f"SELECT DISTINCT {col} FROM exam_candidates")[col].dropna().tolist()
+        distinct_vals = fetch_data(
+            f"SELECT DISTINCT {col} FROM exam_candidates"
+        )[col].dropna().tolist()
         filter_values[col] = st.multiselect(f"{col}:", ["All"] + distinct_vals, default=["All"])
+
 
 # ------------------ BUILD WHERE CLAUSE ------------------
 filters = []
@@ -131,6 +143,7 @@ for col, values in filter_values.items():
             filters.append(f"{col} IN ({value_list})")
 
 where_clause = " AND ".join(filters) if filters else "1=1"
+
 
 # ============================================================
 # 🔍 SHOW PREVIEW
@@ -182,20 +195,8 @@ if st.button("Show Preview"):
         """
 
     else:
-        preview_query = f"""
-        SELECT ExamYear, COUNT(*) AS Count
-        FROM exam_candidates
-        WHERE {where_clause}
-        GROUP BY ExamYear
-        LIMIT 10
-        """
+        st.warning("No data matches your current filter selection.")
 
-    preview_df = fetch_data(preview_query)
-
-    if preview_df.empty:
-        st.warning("No data matches your filter selection.")
-    else:
-        st.dataframe(preview_df, use_container_width=True)
 
 # ============================================================
 # CHART TYPE SELECTION
@@ -205,6 +206,7 @@ st.subheader("Select Chart Types")
 chart_options = ["Table/Matrix", "Bar Chart", "Pie Chart", "Line Chart"]
 selected_charts = st.multiselect("Select chart(s):", chart_options, default=["Table/Matrix"])
 
+
 # ============================================================
 # 1️⃣ GENERATE REPORT → CREATE INVOICE
 # ============================================================
@@ -212,12 +214,14 @@ st.markdown("---")
 st.subheader("🧾 Generate Invoice for This Report")
 
 if st.button("Generate Report", type="primary"):
+    # Check payment status
     payment_df = fetch_data(f"SELECT payment FROM users WHERE email_address='{user_email}'")
     user_has_paid = not payment_df.empty and payment_df["payment"].values[0]
+
     if st.session_state.payment_verified:
         user_has_paid = True
 
-    # Save selections
+    # Save user selections in session
     st.session_state.saved_group = selected_group
     st.session_state.saved_columns = selected_columns
     st.session_state.saved_filters = filter_values
@@ -227,7 +231,7 @@ if st.button("Generate Report", type="primary"):
     if user_has_paid:
         st.success("✅ You already have an active payment.")
     else:
-        # Ensure user_id exists
+        # Make sure user_id exists
         if not user_id or user_id == 0:
             user_df = fetch_data(f"SELECT user_id FROM users WHERE email_address='{user_email}' LIMIT 1")
             if not user_df.empty:
@@ -237,11 +241,12 @@ if st.button("Generate Report", type="primary"):
                 st.error("User ID not found. Please re-login.")
                 st.stop()
 
+        # Create invoice record
         report_payload = {
             "report_group": selected_group,
             "filters": filter_values,
             "charts": selected_charts,
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat()
         }
 
         invoice_ref = create_invoice_record(
@@ -249,20 +254,44 @@ if st.button("Generate Report", type="primary"):
             total=int(SUBSCRIPTION_AMOUNT),
             data_dict=report_payload,
         )
+        st.session_state.invoice_ref = invoice_ref
 
-        if invoice_ref:
-            st.session_state.invoice_ref = invoice_ref
+        # Generate the invoice PDF
+        pdf_path = generate_invoice_pdf(
+            invoice_ref=invoice_ref,
+            user_email=user_email,
+            amount=SUBSCRIPTION_AMOUNT,
+            description=f"Custom Report - {selected_group}",
+            selected_group=selected_group,
+            selected_columns=selected_columns,
+            status="Pending Payment",
+        )
 
-            # ✅ Generate invoice PDF
-            pdf_path = generate_invoice_pdf(
-                invoice_ref=invoice_ref,
-                user_email=user_email,
-                amount=SUBSCRIPTION_AMOUNT,
-                description=f"Custom Report - {selected_group}",
-                selected_group=selected_group,
-                selected_columns=selected_columns,
-                status="Pending Payment",
-            )
+        # Render invoice with watermark (centered, not rotated)
+        watermark_base64 = get_base64_image(WATERMARK_PATH)
+        user_display = user_email.split("@")[0].replace(".", " ").title()
+        invoice_date = datetime.now().strftime("%B %d, %Y")
+
+        invoice_html = f"""
+        <h2 style="text-align:center;">INVOICE</h2>
+        <p><b>Name:</b> {user_display}</p>
+        <p><b>Invoice No:</b> {invoice_ref}</p>
+        <p><b>Date:</b> {invoice_date}</p>
+        <p><b>Report Group:</b> {selected_group}</p>
+        <hr>
+        """
+
+        invoice_html += """
+        <table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr style="background-color:#f2f2f2;">
+                    <th style="padding:8px; border:1px solid #ddd;">Item</th>
+                    <th style="padding:8px; border:1px solid #ddd;">Qty</th>
+                    <th style="padding:8px; border:1px solid #ddd;">Amount (₦)</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
 
             # ✅ Display formatted invoice in UI
             watermark_base64 = get_base64_image(WATERMARK_PATH)
@@ -341,21 +370,30 @@ if st.button("Generate Report", type="primary"):
 if st.session_state.invoice_ref and not st.session_state.payment_verified:
     if st.button("Proceed to Payment", type="primary", key="pay_btn"):
         with st.spinner("Connecting to Paystack..."):
-            api_response = initialize_transaction(email_address=user_email, amount=SUBSCRIPTION_AMOUNT)
-            if api_response and api_response.get("authorization_url"):
-                paystack_ref = api_response.get("reference")
-                st.session_state.paystack_reference = paystack_ref
-                attach_paystack_ref_to_invoice(st.session_state.invoice_ref, paystack_ref)
+            api_response = initialize_transaction(
+                email_address=user_email,
+                amount=SUBSCRIPTION_AMOUNT,
+            )
 
-                checkout_url = api_response.get("authorization_url")
-                components.html(f"<script>window.open('{checkout_url}', '_blank');</script>")
-                st.success("✅ Paystack checkout opened in a new tab.")
-                st.warning("After payment, return and click **Verify My Payment** below.")
-            else:
-                st.error("Failed to connect to Paystack. Please try again.")
+        if api_response and api_response.get("authorization_url"):
+            paystack_ref = api_response.get("reference")
+            st.session_state.paystack_reference = paystack_ref
+
+            attach_paystack_ref_to_invoice(
+                st.session_state.invoice_ref,
+                paystack_ref
+            )
+
+            components.html(
+                f"<script>window.open('{api_response.get('authorization_url')}', '_blank');</script>"
+            )
+            st.success("Checkout opened in new tab. Return and verify payment.")
+        else:
+            st.error("Payment initialization failed. Try again.")
+
 
 # ============================================================
-# 3️⃣ VERIFY PAYMENT → MARK INVOICE PAID → PREP REPORT
+# 3️⃣ VERIFY PAYMENT → SHOW PAID INVOICE → DOWNLOAD → VIEW REPORT
 # ============================================================
 st.markdown("---")
 st.subheader("✔️ Verify Payment & Access Report")
@@ -520,9 +558,18 @@ if st.session_state.payment_verified:
         else:
             query = f"SELECT * FROM exam_candidates WHERE {saved_where}"
 
-        df = fetch_data(query)
-        if df.empty:
-            st.warning("Payment verified, but no data found for your filters.")
+        if not ref:
+            st.error("No payment reference found.")
+            st.stop()
+
+        with st.spinner("Verifying with Paystack..."):
+            res = verify_transaction(ref)
+
+        if res and res.get("status") and res.get("data", {}).get("status") == "success":
+            st.session_state.payment_verified = True
+            update_payment_status(user_email)
+            mark_invoice_paid_by_paystack_ref(ref)
+            st.success("Payment verified!")
         else:
             st.session_state.filtered_df = df
 
