@@ -12,6 +12,8 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.units import inch
 from datetime import datetime
 import os
+from io import BytesIO
+from watermark import add_watermark
  
  
 # ------------------ CONFIG ------------------
@@ -32,7 +34,7 @@ def generate_invoice_pdf(
     status: str = "Pending Payment",
 ):
     """
-    Generates a professional invoice PDF with dynamic diagonal watermark (INVOICE or PAID)
+    Generates a professional invoice PDF (NO WATERMARK).
     """
  
     # Prepare file name
@@ -69,8 +71,6 @@ def generate_invoice_pdf(
         ["Report Group:", selected_group],
         ["Date:", invoice_date],
     ]
- 
-    from reportlab.platypus import Table, TableStyle
  
     info_table = Table(info_data, colWidths=[150, 350])
     info_table.setStyle(
@@ -118,6 +118,7 @@ def generate_invoice_pdf(
         status_html = '<b>Status:</b> <font color="green">PAID ✅</font>'
     else:
         status_html = '<b>Status:</b> <font color="orange">Pending Payment</font>'
+ 
     elements.append(Paragraph(status_html, normal))
     elements.append(Spacer(1, 10))
  
@@ -128,35 +129,18 @@ def generate_invoice_pdf(
     # ---------------- FOOTER ----------------
     elements.append(Paragraph("<i>Thank you for using Edustat Reporting Platform.</i>", normal))
  
-    # ---------------- WATERMARK FUNCTION ----------------
-    def add_watermark(canvas_obj, doc):
-        """Draws diagonal watermark and PAID banner if applicable"""
-        page_width, page_height = A4
-        canvas_obj.saveState()
+    doc.build(elements)
  
-        # Determine watermark text and color
-        if "PAID" in status.upper():
-            watermark_text = "PAID ✅"
-            color = colors.Color(0, 0.6, 0, alpha=0.12)  # light green transparent
-        else:
-            watermark_text = "INVOICE"
-            color = colors.Color(0.6, 0.6, 0.6, alpha=0.12)  # light gray transparent
+    with open(pdf_path, "rb") as pdf_file:
+        pdf_bytes = BytesIO(pdf_file.read())
+        pdf_bytes.seek(0)
  
-        # Draw diagonal watermark
-        canvas_obj.setFont("Helvetica-Bold", 70)
-        canvas_obj.setFillColor(color)
-        canvas_obj.translate(page_width / 2, page_height / 2)
-        canvas_obj.rotate(45)
-        canvas_obj.drawCentredString(0, 0, watermark_text)
-        canvas_obj.restoreState()
+    watermarked_pdf = add_watermark(
+        input_pdf_stream=pdf_bytes,
+        watermark_image_path="altered_edustat.jpg"
+    )
  
-        # Optional top banner for PAID
-        if "PAID" in status.upper():
-            canvas_obj.setFont("Helvetica-Bold", 28)
-            canvas_obj.setFillColor(colors.green)
-            canvas_obj.drawCentredString(page_width / 2, page_height - 100, "PAID ✅")
- 
-    # ---------------- BUILD PDF ----------------
-    doc.build(elements, onFirstPage=add_watermark, onLaterPages=add_watermark)
+    with open(pdf_path, "wb") as output_file:
+        output_file.write(watermarked_pdf.read())
  
     return pdf_path
