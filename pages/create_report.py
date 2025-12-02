@@ -18,6 +18,7 @@ from db_queries import (
     mark_invoice_paid_by_paystack_ref,
     save_user_report,
 )
+ 
 from paystack import initialize_transaction, verify_transaction
 from invoice_pdf import generate_invoice_pdf  # ✅ make sure this file exists
 
@@ -34,10 +35,10 @@ def get_base64_image(img_path):
 if not st.session_state.get("logged_in", False):
     st.warning("Please sign in to view the report.")
     st.stop()
-
+ 
 st.set_page_config(page_title="Create Report", layout="wide")
 st.title("📊 Create Custom Reports")
-
+ 
 user_email = st.session_state.get("user_email")
 user_id = st.session_state.get("user_id", 0)
 
@@ -88,7 +89,7 @@ def get_distinct_values(col):
 
 # ------------------ FILTERS ------------------
 st.subheader("Apply Filters")
-
+ 
 filter_values = {}
 for col in selected_columns:
     if col == "Age":
@@ -141,16 +142,16 @@ for col, values in filter_values.items():
         else:
             value_list = ", ".join(f"'{v}'" for v in values)
             filters.append(f"{col} IN ({value_list})")
-
+ 
 where_clause = " AND ".join(filters) if filters else "1=1"
 
 
 # ============================================================
-# 🔍 SHOW PREVIEW
+# 🔍 DATA PREVIEW
 # ============================================================
 st.markdown("---")
 st.subheader("👀 Data Preview")
-
+ 
 if st.button("Show Preview"):
     if selected_group == "Demographic Analysis":
         preview_query = f"""
@@ -212,7 +213,7 @@ selected_charts = st.multiselect("Select chart(s):", chart_options, default=["Ta
 # ============================================================
 st.markdown("---")
 st.subheader("🧾 Generate Invoice for This Report")
-
+ 
 if st.button("Generate Report", type="primary"):
     # Check payment status
     payment_df = fetch_data(f"SELECT payment FROM users WHERE email_address='{user_email}'")
@@ -227,7 +228,7 @@ if st.button("Generate Report", type="primary"):
     st.session_state.saved_filters = filter_values
     st.session_state.saved_charts = selected_charts
     st.session_state.saved_where_clause = where_clause
-
+ 
     if user_has_paid:
         st.success("✅ You already have an active payment.")
     else:
@@ -248,7 +249,7 @@ if st.button("Generate Report", type="primary"):
             "charts": selected_charts,
             "created_at": datetime.now().isoformat()
         }
-
+ 
         invoice_ref = create_invoice_record(
             user_id=user_id,
             total=int(SUBSCRIPTION_AMOUNT),
