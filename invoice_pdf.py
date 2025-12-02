@@ -47,23 +47,23 @@ def generate_invoice_pdf(
     )
     elements = []
     styles = getSampleStyleSheet()
-
+ 
     # Custom styles
     title_style = styles["Title"]
     title_style.alignment = TA_CENTER
     normal = styles["Normal"]
     normal.spaceAfter = 12
-
+ 
     # ---------------- HEADER ----------------
     elements.append(Paragraph("<b>EDUSTAT REPORTING PLATFORM</b>", title_style))
     elements.append(Spacer(1, 12))
     elements.append(Paragraph("<b>INVOICE</b>", styles["Heading2"]))
     elements.append(Spacer(1, 10))
-
+ 
     # Invoice Info
     invoice_date = datetime.now().strftime("%B %d, %Y")
     user_display = user_email.split("@")[0].replace(".", " ").title()
-
+ 
     info_data = [
         ["Invoice Reference:", invoice_ref],
         ["Customer Name:", user_display],
@@ -71,7 +71,7 @@ def generate_invoice_pdf(
         ["Report Group:", selected_group],
         ["Date:", invoice_date],
     ]
-
+ 
     info_table = Table(info_data, colWidths=[150, 350])
     info_table.setStyle(
         TableStyle(
@@ -87,14 +87,14 @@ def generate_invoice_pdf(
     )
     elements.append(info_table)
     elements.append(Spacer(1, 20))
-
+ 
     # ---------------- TABLE OF ITEMS ----------------
     table_data = [["Selected Item", "Quantity", "Amount (₦)"]]
     for col in selected_columns:
         table_data.append([col, "1", "-"])
-
+ 
     table_data.append(["", "Grand Total", f"₦{amount:,.2f}"])
-
+ 
     table = Table(table_data, colWidths=[250, 100, 150])
     table.setStyle(
         TableStyle(
@@ -112,35 +112,35 @@ def generate_invoice_pdf(
     )
     elements.append(table)
     elements.append(Spacer(1, 20))
-
+ 
     # ---------------- STATUS ----------------
     if "PAID" in status.upper():
         status_html = '<b>Status:</b> <font color="green">PAID ✅</font>'
     else:
         status_html = '<b>Status:</b> <font color="orange">Pending Payment</font>'
-
+ 
     elements.append(Paragraph(status_html, normal))
     elements.append(Spacer(1, 10))
-
+ 
     # ---------------- DESCRIPTION ----------------
     elements.append(Paragraph(f"<b>Description:</b> {description}", normal))
     elements.append(Spacer(1, 30))
-
+ 
     # ---------------- FOOTER ----------------
     elements.append(Paragraph("<i>Thank you for using Edustat Reporting Platform.</i>", normal))
-
+ 
     doc.build(elements)
-
+ 
     with open(pdf_path, "rb") as pdf_file:
         pdf_bytes = BytesIO(pdf_file.read())
         pdf_bytes.seek(0)
-
+ 
     watermarked_pdf = add_watermark(
         input_pdf_stream=pdf_bytes,
         watermark_image_path="altered_edustat.jpg"
     )
-
+ 
     with open(pdf_path, "wb") as output_file:
         output_file.write(watermarked_pdf.read())
-
+ 
     return pdf_path
