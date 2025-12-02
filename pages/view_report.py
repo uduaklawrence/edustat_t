@@ -53,7 +53,7 @@ COLOR_PALETTE = ["#0078D7", "#FFA500", "#FFFFFF"]
 # DATA PREVIEW
 # -------------------------------
 st.subheader("📊 Filtered Dataset Preview")
-st.dataframe(df, use_container_width=True)
+st.dataframe(df, width='stretch')
 
 # ============================================================
 # AUTO INSIGHTS SECTION
@@ -64,7 +64,8 @@ chart_images = []
 
 def safe_plot(fig):
     """Render and export chart safely."""
-    st.plotly_chart(fig, width = 'stretch')
+    # display mode bar to remove the screenshots
+    st.plotly_chart(fig, config= {'displayModeBar': False}, width = 'stretch')
 
     tmp_path = None
     try:
@@ -89,9 +90,15 @@ if saved_group == "Demographic Analysis":
 
     # Gender distribution
     if "Sex" in df.columns:
-        fig_gender = px.pie(df, names="Sex", title="Gender Distribution",
-                            hole=0.3, color_discrete_sequence=COLOR_PALETTE)
-        chart_images.append(safe_plot(fig_gender))
+        fig_gender = px.pie(
+            df, 
+            names="Sex", 
+            title="Gender Distribution",
+            hole=0.3, color_discrete_sequence=COLOR_PALETTE)
+
+        chart_images.append(safe_plot(fig_gender, 
+        #config = plot_config
+                                      ))
         st.caption("Shows proportion of male vs. female candidates.")
 
     # Disability
