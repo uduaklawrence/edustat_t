@@ -7,7 +7,7 @@ st.write("Analyze WAEC candidate data with insightful visualizations.")
 st.subheader("Get Started")
  
 col1, col2 = st.columns(2)
- 
+
 with col1:
     if st.button("🔑 Sign Up"):
         st.switch_page("pages/sign_up.py")  # directly switches to Sign-Up page
