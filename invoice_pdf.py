@@ -14,15 +14,15 @@ from datetime import datetime
 import os
 from io import BytesIO
 from watermark import add_watermark
-
-
+ 
+ 
 # ------------------ CONFIG ------------------
 OUTPUT_DIR = "generated_invoices"
-
+ 
 if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
-
-
+ 
+ 
 # ------------------ MAIN FUNCTION ------------------
 def generate_invoice_pdf(
     invoice_ref: str,
@@ -36,11 +36,11 @@ def generate_invoice_pdf(
     """
     Generates a professional invoice PDF (NO WATERMARK).
     """
-
+ 
     # Prepare file name
     safe_ref = invoice_ref.replace("/", "_")
     pdf_path = os.path.join(OUTPUT_DIR, f"Invoice_{safe_ref}.pdf")
-
+ 
     # Create the document
     doc = SimpleDocTemplate(
         pdf_path, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=80, bottomMargin=50
