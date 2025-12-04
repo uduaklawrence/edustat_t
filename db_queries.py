@@ -1,16 +1,15 @@
 import pandas as pd
+from db_connection import create_connection
+import streamlit as st
 import json
 import uuid
 from datetime import datetime, timedelta
-import streamlit as st
 from sqlalchemy import text
  
-from db_connection import create_connection   # make sure this exists
- 
- 
 # =========================================================
-# ✅ CACHED FETCH (safe)
+# 🔁 CACHING SETUP
 # =========================================================
+ 
 @st.cache_data(ttl=300)  # cache for 5 minutes
 def fetch_data(query, params=None):
     engine = create_connection()
