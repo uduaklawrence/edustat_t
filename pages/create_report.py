@@ -365,6 +365,7 @@ if st.button("Generate Report", type="primary"):
  
         st.info("Proceed to payment below ⬇️")
 
+       
 # ============================================================
 # 2️⃣ PROCEED TO PAYMENT
 # ============================================================
