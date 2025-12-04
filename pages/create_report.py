@@ -211,7 +211,7 @@ selected_charts = st.multiselect("Select chart(s):", chart_options, default=["Ta
 st.markdown("---")
 st.subheader("🧾 Generate Invoice for This Report")
 
-if st.button("Generate Report", type="primary"):
+if st.button("Generate Invoice", type="primary"):
     payment_df = fetch_data(f"SELECT payment FROM users WHERE email_address='{user_email}'")
     user_has_paid = not payment_df.empty and payment_df["payment"].values[0]
     if st.session_state.payment_verified:

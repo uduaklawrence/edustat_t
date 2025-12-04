@@ -29,7 +29,7 @@ st.dataframe(
         "created_at",
         "expires_at"
     ]],
-    use_container_width=True
+    width='stretch'
 )
 
 # Let user view/download a report
