@@ -295,11 +295,11 @@ if st.button("Generate Report", type="primary"):
         """
 
             # ✅ Display formatted invoice in UI
-            watermark_base64 = get_base64_image(WATERMARK_PATH)
-            user_display = user_email.split("@")[0].replace(".", " ").title()
-            invoice_date = datetime.now().strftime("%B %d, %Y")
+        watermark_base64 = get_base64_image(WATERMARK_PATH)
+        user_display = user_email.split("@")[0].replace(".", " ").title()
+        invoice_date = datetime.now().strftime("%B %d, %Y")
 
-            invoice_html = f"""
+        invoice_html = f"""
         <h2 style="text-align:center;">INVOICE</h2>
         <p><b>Name:</b> {user_display}</p>
         <p><b>Invoice No:</b> {invoice_ref}</p>
@@ -559,6 +559,9 @@ if st.session_state.payment_verified:
         else:
             query = f"SELECT * FROM exam_candidates WHERE {saved_where}"
 
+        # Retrieve paystack reference
+        ref = st.session_state.get("paystack_reference")
+        
         if not ref:
             st.error("No payment reference found.")
             st.stop()
