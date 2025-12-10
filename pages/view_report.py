@@ -109,6 +109,29 @@ for metric, value in summary_items:
  
 # 👉 Needed for PDF generation
 summary_df = pd.DataFrame(summary_items, columns=["Metric", "Value"])
+
+# ============================================================
+# CSV DOWNLOAD OPTION
+# ============================================================
+st.markdown("### 📥 Download Data as CSV")
+
+# Get user email/username from session
+user_identifier = st.session_state.get("user_email", "user").split("@")[0]
+user_email = st.session_state.get("user_email", "no-email")
+
+# Generate CSV bytes
+csv_data = df.to_csv(index=False).encode("utf-8")
+
+# Build clean filename
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+csv_filename = f"{user_identifier}_{saved_group.replace(' ', '_')}.csv"
+
+st.download_button(
+    label="⬇️ Download CSV",
+    data=csv_data,
+    file_name=csv_filename,
+    mime="text/csv"
+)
  
 # ============================================================
 # AUTO INSIGHTS SECTION
@@ -288,13 +311,14 @@ else:
 # PDF GENERATION & DOWNLOAD
 # ============================================================
 @st.cache_data(show_spinner=False)
-def generate_pdf(dataframe, title, chart_paths):
+def generate_pdf(dataframe, title, chart_paths, user_email):
     """Generate styled PDF with title, table, and charts (each chart on new page)."""
     styles = getSampleStyleSheet()
     report_title = Paragraph(f"<b>{title}</b>", styles["Title"])
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     generated_on = Paragraph(f"Generated on: {date_str}", styles["Normal"])
- 
+    user_identifier_display = Paragraph(f"<para align='center'><font size=20><b>Name: </b></font><font size=26><b>{user_identifier}</b></font></para>",styles["Normal"])
+
     data = [dataframe.columns.tolist()] + dataframe.values.tolist()
     table = Table(data, colWidths=[200, 300])
     table.setStyle(TableStyle([
@@ -308,23 +332,43 @@ def generate_pdf(dataframe, title, chart_paths):
         ("FONTSIZE", (0, 0), (-1, -1), 14)
     ]))
  
+    # -----------------------------------------------------------
+    # FOOTER (EMAIL + COPYRIGHT) FOR ALL PAGES
+    # -----------------------------------------------------------
+    from reportlab.pdfgen import canvas
+
+    def footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 10)
+
+        # Left text
+        canvas.drawString(40, 20, "© Copyright 2025 Edustat. - All rights reserved")
+
+        # Right aligned email
+        canvas.drawRightString(800, 20, f"email: {user_email}")
+
+        canvas.restoreState()
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
         doc = SimpleDocTemplate(tmpfile.name, pagesize=landscape(A4))
         elements = [
             report_title,
-            Spacer(1, 12),
+            Spacer(1, 18),
             generated_on,
-            Spacer(1, 12),
+            Spacer(1, 18),
+            user_identifier_display,
+            Spacer(1, 24),
             Paragraph("<b>Filtered Data Summary</b>", styles["Heading2"]),
             Spacer(1, 6),
             table,
         ]
+
         for path in chart_paths:
             elements.append(PageBreak())
             elements.append(Paragraph("<b>Chart Visualization</b>", styles["Heading2"]))
             elements.append(Spacer(1, 12))
             elements.append(Image(path, width=700, height=400))
-        doc.build(elements)
+        doc.build(elements, onFirstPage=footer, onLaterPages=footer)
         return tmpfile.name
  
 # -------------------------------
@@ -334,7 +378,7 @@ st.markdown("---")
 st.subheader("📥 Download Report")
  
 if chart_images:
-    pdf_path = generate_pdf(summary_df, f"{saved_group} Summary Report", chart_images)
+    pdf_path = generate_pdf(summary_df, f"{saved_group} Summary Report", chart_images, st.session_state.get("user_email"))
     with open(pdf_path, "rb") as pdf_file:
         # add watermark to PDF
         pdf_bytes = BytesIO(pdf_file.read())
