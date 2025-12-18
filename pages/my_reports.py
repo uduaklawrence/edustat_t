@@ -23,7 +23,7 @@ st.subheader("Your Saved Reports")
 
 st.dataframe(
     reports[[
-        "invoice_ref",
+         "report_name",
         "report_group",
         "pdf_path",
         "created_at",
@@ -35,9 +35,11 @@ st.dataframe(
 # Let user view/download a report
 st.subheader("Open a Report")
 
-report_ids = reports["report_id"].tolist()
-selected_id = st.selectbox("Select a Report ID", report_ids)
+report_names = reports["report_name"].tolist()
+selected_name = st.selectbox("Select a Report to open", report_names)
 
 if st.button("Open Report"):
-    st.session_state.selected_report_id = selected_id
+    # Find corresponding report_id
+    selected_report = reports[reports["report_name"] == selected_name].iloc[0]
+    st.session_state.selected_report_id = int(selected_report["report_id"])
     st.switch_page("pages/view_report.py")
