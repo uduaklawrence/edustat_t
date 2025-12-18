@@ -17,6 +17,7 @@ from db_queries import (
     mark_invoice_paid_by_paystack_ref,
     save_user_report,
 )
+from redis_cache import get_or_set_distinct_values
 from paystack import initialize_transaction, verify_transaction
 from invoice_pdf import generate_invoice_pdf  # ✅ make sure this file exists
 
@@ -71,12 +72,11 @@ selected_columns = st.multiselect(
     "Select Columns to Filter", available_columns, default=available_columns
 )
 
-# ------------------ CACHING DISTINCT VALUES ------------------
+# ------------------ FILTERS CACHE ------------------
  
-@st.cache_data
-def get_distinct_values(col):
-    query = f"SELECT DISTINCT {col} FROM exam_candidates"
-    return fetch_data(query)[col].dropna().tolist()
+def fetch_distinct_from_db(column):
+    df = fetch_data(f"SELECT DISTINCT {column} FROM exam_candidates")
+    return df[column].dropna().tolist()
 
 # ------------------ FILTERS ------------------
 st.subheader("Apply Filters")
@@ -105,7 +105,9 @@ for col in selected_columns:
              # If no groups are selected, default to all ages
         filter_values["Age"] = selected_ages if selected_ages else ages
     else:
-        distinct_vals = fetch_data(f"SELECT DISTINCT {col} FROM exam_candidates")[col].dropna().tolist()
+        cache_key = f"distinct:{col}"
+
+        distinct_vals = get_or_set_distinct_values(cache_key,lambda: fetch_distinct_from_db(col))
         filter_values[col] = st.multiselect(f"{col}:", ["All"] + distinct_vals, default=["All"])
 
 # ------------------ BUILD WHERE CLAUSE ------------------
