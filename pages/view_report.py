@@ -8,6 +8,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
+from reportlab.pdfgen import canvas
 from watermark import add_watermark
 from io import BytesIO
 
@@ -164,10 +165,10 @@ st.download_button(
     file_name=csv_filename,
     mime="text/csv"
 )
- 
+
 # ============================================================
 # AUTO INSIGHTS SECTION
-# =========================================================
+# ============================================================
 st.markdown("---")
 st.markdown("## 🧠 Automated Insights")
 
@@ -413,7 +414,12 @@ def generate_pdf(dataframe, title, chart_paths, user_email):
     report_title = Paragraph(f"<b>{title}</b>", styles["Title"])
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     generated_on = Paragraph(f"Generated on: {date_str}", styles["Normal"])
-    user_identifier_display = Paragraph(f"<para align='center'><font size=20><b>Name: </b></font><font size=26><b>{user_identifier}</b></font></para>",styles["Normal"])
+    
+    user_identifier = user_email.split("@")[0].replace(".", " ").title()
+    user_identifier_display = Paragraph(
+        f"<para align='center'><font size=20><b>Name: </b></font><font size=26><b>{user_identifier}</b></font></para>",
+        styles["Normal"]
+    )
 
     data = [dataframe.columns.tolist()] + dataframe.values.tolist()
     table = Table(data, colWidths=[200, 300])
@@ -427,23 +433,14 @@ def generate_pdf(dataframe, title, chart_paths, user_email):
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 14)
     ]))
- 
-    # -----------------------------------------------------------
-    # FOOTER (EMAIL + COPYRIGHT) FOR ALL PAGES
-    # -----------------------------------------------------------
-    from reportlab.pdfgen import canvas
 
-    def footer(canvas, doc):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 10)
-
-        # Left text
-        canvas.drawString(40, 20, "© Copyright 2025 Edustat. - All rights reserved")
-
-        # Right aligned email
-        canvas.drawRightString(800, 20, f"email: {user_email}")
-
-        canvas.restoreState()
+    # Footer for all pages
+    def footer(canvas_obj, doc):
+        canvas_obj.saveState()
+        canvas_obj.setFont("Helvetica", 10)
+        canvas_obj.drawString(40, 20, "© Copyright 2025 Edustat. - All rights reserved")
+        canvas_obj.drawRightString(800, 20, f"email: {user_email}")
+        canvas_obj.restoreState()
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
         doc = SimpleDocTemplate(tmpfile.name, pagesize=landscape(A4))
@@ -459,11 +456,14 @@ def generate_pdf(dataframe, title, chart_paths, user_email):
             table,
         ]
 
+        # Add charts
         for path in chart_paths:
-            elements.append(PageBreak())
-            elements.append(Paragraph("<b>Chart Visualization</b>", styles["Heading2"]))
-            elements.append(Spacer(1, 12))
-            elements.append(Image(path, width=700, height=400))
+            if path:  # Only add valid paths
+                elements.append(PageBreak())
+                elements.append(Paragraph("<b>Chart Visualization</b>", styles["Heading2"]))
+                elements.append(Spacer(1, 12))
+                elements.append(Image(path, width=700, height=400))
+        
         doc.build(elements, onFirstPage=footer, onLaterPages=footer)
         return tmpfile.name
 
@@ -471,39 +471,46 @@ def generate_pdf(dataframe, title, chart_paths, user_email):
 # PDF DOWNLOAD
 # =========================================================
 st.markdown("---")
-st.subheader("📥 Download Report")
+st.subheader("📥 Download Report as PDF")
 
 if chart_images:
-    pdf_path = generate_pdf(summary_df, f"{saved_group} Summary Report", chart_images, st.session_state.get("user_email"))
-    with open(pdf_path, "rb") as pdf_file:
-        # add watermark to PDF
-        pdf_bytes = BytesIO(pdf_file.read())
-        pdf_bytes.seek(0)
- 
-        # apply watermark
-    pdf = add_watermark(input_pdf_stream=pdf_bytes, watermark_image_path="altered_edustat.jpg")
- 
-    st.download_button(
-            label="📄 Download Report as PDF",
-            data=pdf,
-            file_name=f"{saved_group.replace(' ', '_')}_report.pdf",
-            mime="application/pdf"
-        )
-        st.success("✅ Your report is ready to download with all visuals.")
+    # Filter out None values
+    valid_charts = [img for img in chart_images if img is not None]
+    
+    if valid_charts:
+        try:
+            pdf_path = generate_pdf(
+                summary_df, 
+                f"{saved_group} Summary Report", 
+                valid_charts, 
+                user_email
+            )
+            
+            with open(pdf_path, "rb") as pdf_file:
+                pdf_bytes = BytesIO(pdf_file.read())
+                pdf_bytes.seek(0)
+                
+                # Apply watermark
+                pdf = add_watermark(
+                    input_pdf_stream=pdf_bytes, 
+                    watermark_image_path="altered_edustat.jpg"
+                )
+            
+            st.download_button(
+                label="📄 Download Report as PDF",
+                data=pdf,
+                file_name=f"{saved_group.replace(' ', '_')}_report.pdf",
+                mime="application/pdf"
+            )
+            st.success("✅ Your report is ready to download with all visuals.")
+        
+        except Exception as e:
+            st.error(f"⚠️ Error generating PDF: {str(e)}")
+            st.info("📊 You can still download the CSV above.")
     else:
         st.warning("⚠️ Charts could not be exported. Download CSV instead.")
 else:
     st.warning("⚠️ Add or generate at least one chart to include visuals in your PDF report.")
-
-# CSV Download (always available)
-st.markdown("---")
-csv = df.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="📊 Download Raw Data as CSV",
-    data=csv,
-    file_name=f"{saved_group.replace(' ', '_')}_data.csv",
-    mime="text/csv"
-)
 
 # Back button
 st.markdown("---")
