@@ -77,13 +77,6 @@ with col2:
     else:
         st.metric("Female Candidates", "N/A")
 
-with col3:
-    if "Disability" in df.columns:
-        disability_count = df["Disability"].notna().sum()
-        st.metric("With Disability Info", f"{disability_count:,}")
-    else:
-        st.metric("With Disability Info", "N/A")
-
 # =========================================================
 # GLOBAL COLOR PALETTE
 # =========================================================
@@ -313,14 +306,6 @@ elif saved_group == "Temporal & Progression Trends":
 
 else:
     st.info("ℹ️ No predefined insights available for this report group.")
-
-# =========================================================
-# RAW DATA TABLE
-# =========================================================
-st.markdown("---")
-st.subheader("📋 Raw Data Preview")
-st.dataframe(df.head(50), use_container_width=True)
-st.caption(f"Showing first 50 of {len(df):,} records")
 
 # =========================================================
 # MANUAL VISUALIZATION SECTION

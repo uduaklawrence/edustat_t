@@ -58,111 +58,111 @@ st.session_state.setdefault("paystack_reference", None)
 st.session_state.setdefault("invoice_ref", None)
 # ... other defaults ...
 
-# ============================================================
-# 🔄 AUTO-RESTORE: Resume Pending/Paid Invoice
-# ============================================================
-def restore_user_state():
-    """Load user's last invoice/report state from database."""
-    if st.session_state.get("state_restored", False):
-        return  # Already restored this session
+# # ============================================================
+# # 🔄 AUTO-RESTORE: Resume Pending/Paid Invoice
+# # ============================================================
+# def restore_user_state():
+#     """Load user's last invoice/report state from database."""
+#     if st.session_state.get("state_restored", False):
+#         return  # Already restored this session
     
-    try:
-        # Get user's most recent invoice
-        latest_invoice_query = f"""
-            SELECT 
-                invoice_ref,
-                status,
-                paystack_reference,
-                data
-            FROM invoices 
-            WHERE user_id = {user_id}
-            ORDER BY created_at DESC 
-            LIMIT 1
-        """
-        invoice_df = fetch_data(latest_invoice_query)
+#     try:
+#         # Get user's most recent invoice
+#         latest_invoice_query = f"""
+#             SELECT 
+#                 invoice_ref,
+#                 status,
+#                 paystack_reference,
+#                 data
+#             FROM invoices 
+#             WHERE user_id = {user_id}
+#             ORDER BY created_at DESC 
+#             LIMIT 1
+#         """
+#         invoice_df = fetch_data(latest_invoice_query)
         
-        if not invoice_df.empty:
-            invoice = invoice_df.iloc[0]
-            invoice_ref = invoice['invoice_ref']
-            status = invoice['status']
+#         if not invoice_df.empty:
+#             invoice = invoice_df.iloc[0]
+#             invoice_ref = invoice['invoice_ref']
+#             status = invoice['status']
             
-            # Show resumption banner
-            if status == 'PENDING':
-                st.info(f"📋 **Resuming Pending Invoice:** {invoice_ref}")
-            elif status == 'PAID':
-                st.success(f"✅ **Resuming Paid Invoice:** {invoice_ref}")
+#             # Show resumption banner
+#             if status == 'PENDING':
+#                 st.info(f"📋 **Resuming Pending Invoice:** {invoice_ref}")
+#             elif status == 'PAID':
+#                 st.success(f"✅ **Resuming Paid Invoice:** {invoice_ref}")
             
-            # Restore invoice reference
-            st.session_state.invoice_ref = invoice_ref
-            st.session_state.pending_invoice_saved = True
+#             # Restore invoice reference
+#             st.session_state.invoice_ref = invoice_ref
+#             st.session_state.pending_invoice_saved = True
             
-            # Restore payment status
-            if status == 'PAID':
-                st.session_state.payment_verified = True
-                st.session_state.paystack_reference = invoice.get('paystack_reference')
+#             # Restore payment status
+#             if status == 'PAID':
+#                 st.session_state.payment_verified = True
+#                 st.session_state.paystack_reference = invoice.get('paystack_reference')
                 
-                # Check if report was already saved
-                report_check = fetch_data(f"""
-                    SELECT report_id, report_name 
-                    FROM user_reports 
-                    WHERE invoice_ref = '{invoice_ref}'
-                    LIMIT 1
-                """)
+#                 # Check if report was already saved
+#                 report_check = fetch_data(f"""
+#                     SELECT report_id, report_name 
+#                     FROM user_reports 
+#                     WHERE invoice_ref = '{invoice_ref}'
+#                     LIMIT 1
+#                 """)
                 
-                if not report_check.empty:
-                    st.session_state.report_saved = True
-                    st.caption(f"📁 Report saved as: **{report_check.iloc[0]['report_name']}**")
+#                 if not report_check.empty:
+#                     st.session_state.report_saved = True
+#                     st.caption(f"📁 Report saved as: **{report_check.iloc[0]['report_name']}**")
             
-            # Restore filters/selections from invoice data JSON
-            if 'data' in invoice and invoice['data']:
-                try:
-                    data_dict = json.loads(invoice['data']) if isinstance(invoice['data'], str) else invoice['data']
+#             # Restore filters/selections from invoice data JSON
+#             if 'data' in invoice and invoice['data']:
+#                 try:
+#                     data_dict = json.loads(invoice['data']) if isinstance(invoice['data'], str) else invoice['data']
                     
-                    st.session_state.saved_group = data_dict.get('report_group')
-                    st.session_state.saved_filters = data_dict.get('filters', {})
-                    st.session_state.saved_charts = data_dict.get('charts', [])
+#                     st.session_state.saved_group = data_dict.get('report_group')
+#                     st.session_state.saved_filters = data_dict.get('filters', {})
+#                     st.session_state.saved_charts = data_dict.get('charts', [])
                     
-                    # Restore where clause
-                    filters = []
-                    for col, values in data_dict.get('filters', {}).items():
-                        if "All" not in values and values:
-                            if col == "Age":
-                                # Handle age filter restoration
-                                pass  # You can add age logic here
-                            else:
-                                value_list = ", ".join(f"'{v}'" for v in values)
-                                filters.append(f"{col} IN ({value_list})")
+#                     # Restore where clause
+#                     filters = []
+#                     for col, values in data_dict.get('filters', {}).items():
+#                         if "All" not in values and values:
+#                             if col == "Age":
+#                                 # Handle age filter restoration
+#                                 pass  # You can add age logic here
+#                             else:
+#                                 value_list = ", ".join(f"'{v}'" for v in values)
+#                                 filters.append(f"{col} IN ({value_list})")
                     
-                    st.session_state.saved_where_clause = " AND ".join(filters) if filters else "1=1"
+#                     st.session_state.saved_where_clause = " AND ".join(filters) if filters else "1=1"
                     
-                except Exception as parse_err:
-                    st.warning(f"Could not parse saved filters: {parse_err}")
+#                 except Exception as parse_err:
+#                     st.warning(f"Could not parse saved filters: {parse_err}")
             
-            st.session_state.state_restored = True
+#             st.session_state.state_restored = True
             
-            # Show action buttons
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("✏️ Edit & Create New Invoice", type="secondary"):
-                    # Clear session to start fresh
-                    for key in ['invoice_ref', 'payment_verified', 'saved_group', 'saved_filters']:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.session_state.state_restored = False
-                    st.rerun()
+#             # Show action buttons
+#             col1, col2 = st.columns(2)
+#             with col1:
+#                 if st.button("✏️ Edit & Create New Invoice", type="secondary"):
+#                     # Clear session to start fresh
+#                     for key in ['invoice_ref', 'payment_verified', 'saved_group', 'saved_filters']:
+#                         if key in st.session_state:
+#                             del st.session_state[key]
+#                     st.session_state.state_restored = False
+#                     st.rerun()
             
-            with col2:
-                if status == 'PENDING':
-                    st.info("👇 Scroll down to proceed with payment")
-                elif status == 'PAID':
-                    if st.button("📊 View My Report", type="primary"):
-                        st.switch_page("pages/view_report.py")
+#             with col2:
+#                 if status == 'PENDING':
+#                     st.info("👇 Scroll down to proceed with payment")
+#                 elif status == 'PAID':
+#                     if st.button("📊 View My Report", type="primary"):
+#                         st.switch_page("pages/view_report.py")
     
-    except Exception as e:
-        st.warning(f"Could not restore previous session: {str(e)}")
+#     except Exception as e:
+#         st.warning(f"Could not restore previous session: {str(e)}")
 
-# 🚀 Call restore function on page load
-restore_user_state()
+# # 🚀 Call restore function on page load
+# restore_user_state()
 
 # ------------------ STEP 1: INSIGHT GROUP SELECTION ------------------
 insight_groups = [
