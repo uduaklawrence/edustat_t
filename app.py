@@ -91,6 +91,8 @@ with st.sidebar:
             st.session_state.user_id = None
             st.session_state.navigate_to = "Landing"
             st.rerun()
+        if st.sidebar.button("📋 My Invoices"):
+            st.switch_page("pages/my_invoices.py")
 
 
 # ------------ RUN THE ROUTER ------------
