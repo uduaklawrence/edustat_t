@@ -43,6 +43,7 @@ pytest-timeout==2.4.0
 python-dateutil==2.9.0.post0
 python-decouple==3.8
 pytz==2025.2
+redis>=5.0.0
 referencing==0.36.2
 reportlab==4.4.4
 requests==2.32.5
