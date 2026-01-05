@@ -117,7 +117,7 @@ if "Age" in df.columns:
     if not age_counts.empty:
         top_age = age_counts.index[0]
         top_age_count = age_counts.iloc[0]
-        summary_items.append(("Most Common Age", f"{top_age} years ({top_age_count:,} candidates)"))
+        summary_items.append(("Modal Age", f"{top_age} years ({top_age_count:,} candidates)"))
 
 # Render summary
 for metric, value in summary_items:
