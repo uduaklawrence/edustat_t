@@ -13,6 +13,8 @@ user_id = st.session_state.get("user_id")
 
 # Fetch reports
 reports = fetch_user_reports(user_id)
+reports = reports.reset_index(drop=True)
+reports.index = reports.index + 1
 
 if reports.empty:
     st.info("You have no saved reports in the last 30 days.")

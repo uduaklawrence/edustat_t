@@ -45,9 +45,11 @@ def get_or_set_distinct_values(key, fetch_fn):
     """
     cached = redis_client.get(key)
     if cached:
+        print(f"🟢 REDIS HIT → {key}")
         return json.loads(cached)
 
     # Cache miss → fetch from DB
+    print(f"🔴 REDIS MISS → {key}")
     data = fetch_fn()
     redis_client.setex(key, CACHE_TTL, json.dumps(data))
     return data

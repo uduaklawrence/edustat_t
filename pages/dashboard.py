@@ -63,7 +63,11 @@ if selected_state != 'All States':
  
 # Display the table without the 'State' column
 aggregated_data = aggregated_data.drop(columns=['State'])
-st.dataframe(aggregated_data)
+
+# ✅ Make index start from 1 (display only)
+df_display = aggregated_data.reset_index(drop=True)
+df_display.index = df_display.index + 1
+st.dataframe(df_display)
  
 # -------------------- QUICK INSIGHTS --------------------
 st.header("📊 Quick Insights")
@@ -86,8 +90,10 @@ with col2:
 st.markdown("---")
 st.subheader("Top 3 Centres")
 centres_df = fetch_data("SELECT Centre, State, COUNT(*) AS Registered_candidates FROM exam_candidates GROUP BY Centre, State ORDER BY COUNT(*) DESC LIMIT 3")
+centres_display = centres_df.reset_index(drop=True)
+centres_display.index = centres_display.index + 1
 # Display the result as a table
-st.dataframe(centres_df)
+st.dataframe(centres_display)
  
 # -------------------- REPORT LINK --------------------
 st.subheader("📑 Create Custom Reports")
