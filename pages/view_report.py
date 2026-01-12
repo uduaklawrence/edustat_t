@@ -6,11 +6,12 @@ import tempfile
 from datetime import datetime
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
 from reportlab.pdfgen import canvas
 from watermark import add_watermark
 from io import BytesIO
+from report_summary import generate_report_summary
 
 # PAGE CONFIGURATION
 st.set_page_config(page_title="View Report", layout="wide")
@@ -59,6 +60,32 @@ if df.empty:
 
 st.success(f"✅ Showing results for: **{saved_group}**")
 st.info(f"📊 **Total Records:** {len(df):,} | **Columns:** {', '.join(df.columns.tolist())}")
+
+top_age = df['Age'].mode()[0] if 'Age' in df.columns else "N/A"
+female_pct = (df["Sex"].str.lower().eq("female").sum() / len(df) * 100) if "Sex" in df.columns else 0
+female_pct = round(female_pct, 0)
+top_state = df['State'].mode()[0] if 'State' in df.columns else "N/A"
+top_state_count = df["State"].value_counts().get(top_state, 0) if top_state != "N/A" else 0
+peak_year = df['ExamYear'].mode()[0] if 'ExamYear' in df.columns else "N/A"
+
+metrics = {
+    "modal_age": top_age,
+    "female_pct": female_pct,
+    "top_state": top_state,
+    "top_state_count": top_state_count,
+    "peak_year": peak_year,
+    # Add other metrics you have
+}
+
+# =========================================================
+# GENERATE REPORT SUMMARY
+# =========================================================
+summary_text = generate_report_summary(
+     report_group=saved_group,
+    total_records=len(df),
+    metrics=metrics,
+    applied_filters=saved_filters
+)
 
 # =========================================================
 # QUICK METRICS
@@ -389,6 +416,15 @@ if st.session_state.visualizations:
 else:
     st.info("ℹ️ No custom visuals added yet. Use the form above to add one.")
 
+summary_style = ParagraphStyle(
+    name='SummaryStyle',
+    fontName='Helvetica',
+    fontSize=14,  # Increase the font size
+    leading=16,   # Adjust line spacing
+    alignment=0,  # Centered text (1 for center alignment, 0 for left, 2 for right)
+    spaceAfter=12 # Space after the paragraph
+)
+
 # =========================================================
 # PDF GENERATION & DOWNLOAD
 # =========================================================
@@ -436,6 +472,10 @@ def generate_pdf(dataframe, title, chart_paths, user_email):
             Spacer(1, 18),
             user_identifier_display,
             Spacer(1, 24),
+            Paragraph("<b>Report Summary</b>", styles["Heading2"]),
+            Spacer(1, 6),
+            Paragraph(summary_text, summary_style),  # Insert summary text here
+            Spacer(1, 12),
             Paragraph("<b>Filtered Data Summary</b>", styles["Heading2"]),
             Spacer(1, 6),
             table,
