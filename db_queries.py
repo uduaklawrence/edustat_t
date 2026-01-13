@@ -329,3 +329,13 @@ def fetch_user_invoices(user_id):
         ORDER BY created_at DESC
     """
     return fetch_data(query, {"uid": user_id})
+
+def delete_invoice(invoice_ref):
+    """Delete an invoice by reference number"""
+    query = f"DELETE FROM invoices WHERE ref = '{invoice_ref}'"
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(query)
+    conn.commit()
+    cursor.close()
+    conn.close()
