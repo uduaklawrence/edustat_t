@@ -1,6 +1,7 @@
 import streamlit as st
 import plotly.express as px
-from db_queries import fetch_data
+from Analytics_layer import get_exam_dataset
+import pandas as pd
  
 # -------------------- AUTH CHECK --------------------
 if not st.session_state.get('logged_in', False):
@@ -25,18 +26,23 @@ with col2:
         st.switch_page("pages/Landing.py")
  
 st.markdown("---")  # nice visual separator
- 
+
+@st.cache_data(show_spinner=False)
+def load_dataset():
+    return get_exam_dataset()
+
+df = load_dataset()
+
 # -------------------- KPI CARDS --------------------
-kpi_query = "SELECT Sex, COUNT(*) AS Count FROM exam_candidates GROUP BY Sex"
-kpi_df = fetch_data(kpi_query)
- 
-total_candidates = kpi_df['Count'].sum() if not kpi_df.empty else 0
-male_count = kpi_df[kpi_df['Sex'] == 'Male']['Count'].sum() if not kpi_df.empty else 0
-female_count = kpi_df[kpi_df['Sex'] == 'Female']['Count'].sum() if not kpi_df.empty else 0
- 
-disability_query = "SELECT COUNT(*) AS Count FROM exam_candidates WHERE Disability IS NOT NULL AND Disability != 'None'"
-disability_count = fetch_data(disability_query)['Count'].values[0] if not fetch_data(disability_query).empty else 0
- 
+total_candidates = len(df)
+
+male_count = (df["Sex"].str.lower() == "male").sum()
+female_count = (df["Sex"].str.lower() == "female").sum()
+
+disability_count = df[
+    (df["Disability"].notna()) & (df["Disability"] != "None")
+].shape[0]
+
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("👥 Total Candidates", f"{total_candidates:,}")
 col2.metric("♂️ Males", f"{male_count:,}")
@@ -45,29 +51,19 @@ col4.metric("♿ Disabilities", f"{disability_count:,}")
  
 # -------------------- DATA INSPECT --------------------
 st.header("🔍 Inspect the Data")
-# Modify the query to summarize data based on ExamYear and State
-aggregated_query = """
-SELECT ExamYear, State, COUNT(*) AS NumberOfCandidates
-FROM exam_candidates
-GROUP BY ExamYear, State
-"""
-aggregated_data = fetch_data(aggregated_query)
- 
-# Create a dropdown for state selection
-states = aggregated_data['State'].unique()  # Get unique states
-selected_state = st.selectbox('Select State to Filter', options=['All States'] + list(states))
- 
-# Apply filter based on selected state
-if selected_state != 'All States':
-    aggregated_data = aggregated_data[aggregated_data['State'] == selected_state]
- 
-# Display the table without the 'State' column
-aggregated_data = aggregated_data.drop(columns=['State'])
 
-# ✅ Make index start from 1 (display only)
-df_display = aggregated_data.reset_index(drop=True)
-df_display.index = df_display.index + 1
-st.dataframe(df_display)
+agg = df.groupby(["ExamYear", "State"]).size().reset_index(name="NumberOfCandidates")
+
+states = sorted(agg["State"].unique())
+selected_state = st.selectbox("Select State to Filter", ["All States"] + states)
+
+if selected_state != "All States":
+    agg = agg[agg["State"] == selected_state]
+
+display_df = agg.drop(columns=["State"]).reset_index(drop=True)
+display_df.index += 1
+
+st.dataframe(display_df)
  
 # -------------------- QUICK INSIGHTS --------------------
 st.header("📊 Quick Insights")
@@ -75,25 +71,31 @@ col1, col2 = st.columns(2)
  
 # Candidates per Year
 with col1:
-    yearly_df = fetch_data("SELECT ExamYear, COUNT(*) AS Count FROM exam_candidates GROUP BY ExamYear")
-    if not yearly_df.empty:
-        fig = px.bar(yearly_df, x='ExamYear', y='Count', color='ExamYear', title="Candidates per Year")
-        st.plotly_chart(fig,config= {'displayModeBar': False}, width='stretch')
+    yearly = df.groupby("ExamYear").size().reset_index(name="Count")
+    fig = px.bar(yearly, x="ExamYear", y="Count", title="Candidates per Year")
+    st.plotly_chart(fig, use_container_width=True)
  
 # Gender distribution
 with col2:
-    if not kpi_df.empty:
-        fig = px.pie(kpi_df, values='Count', names='Sex', hole=0.3, title="Overall Male vs Female")
-        st.plotly_chart(fig,config= {'displayModeBar': False}, width='stretch')
+    gender = df["Sex"].value_counts().reset_index()
+    gender.columns = ["Sex", "Count"]
+    fig = px.pie(gender, values="Count", names="Sex", hole=0.3, title="Male vs Female")
+    st.plotly_chart(fig, use_container_width=True)
  
 # Top 3 Centres
 st.markdown("---")
 st.subheader("Top 3 Centres")
-centres_df = fetch_data("SELECT Centre, State, COUNT(*) AS Registered_candidates FROM exam_candidates GROUP BY Centre, State ORDER BY COUNT(*) DESC LIMIT 3")
-centres_display = centres_df.reset_index(drop=True)
-centres_display.index = centres_display.index + 1
-# Display the result as a table
-st.dataframe(centres_display)
+
+top_centres = (
+    df.groupby(["Centre", "State"])
+    .size()
+    .reset_index(name="Registered_candidates")
+    .sort_values("Registered_candidates", ascending=False)
+    .head(3)
+)
+
+top_centres.index += 1
+st.dataframe(top_centres)
  
 # -------------------- REPORT LINK --------------------
 st.subheader("📑 Create Custom Reports")
