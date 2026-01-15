@@ -6,18 +6,17 @@ import streamlit as st
 import streamlit.components.v1 as components
 import os
 import json
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 import base64
+import pandas as pd 
+from Analytics_layer import get_exam_dataset
 from db_queries import (
-    fetch_data,
     update_payment_status,
     create_invoice_record,
     attach_paystack_ref_to_invoice,
     mark_invoice_paid_by_paystack_ref,
     save_user_report,
 )
-from redis_cache import get_or_set_distinct_values
 from paystack import initialize_transaction, verify_transaction
 from invoice_pdf import generate_invoice_pdf
 
@@ -40,6 +39,15 @@ st.title("📊 Create Custom Reports")
 user_email = st.session_state.get("user_email")
 user_id = st.session_state.get("user_id", 0)
 
+
+# ------------------ LOAD ANALYTICS DATA (REDIS ONLY) ------------------
+
+@st.cache_data(show_spinner=False)
+def load_dataset():
+    return get_exam_dataset()
+
+df = load_dataset()
+
 # ------------------ SESSION DEFAULTS ------------------
 st.session_state.setdefault("paystack_reference", None)
 st.session_state.setdefault("invoice_ref", None)
@@ -48,16 +56,10 @@ st.session_state.setdefault("saved_group", None)
 st.session_state.setdefault("saved_columns", None)
 st.session_state.setdefault("saved_filters", None)
 st.session_state.setdefault("saved_charts", None)
-st.session_state.setdefault("saved_where_clause", None)
 st.session_state.setdefault("pending_invoice_saved", False)
 st.session_state.setdefault("report_saved", False)
 st.session_state.setdefault("filtered_df", None)
 st.session_state.setdefault("report_ready", False)
-
-# ------------------ SESSION DEFAULTS ------------------ (existing code)
-st.session_state.setdefault("paystack_reference", None)
-st.session_state.setdefault("invoice_ref", None)
-# ... other defaults ...
 
 # # ============================================================
 # # 🔄 AUTO-RESTORE: Resume Pending/Paid Invoice
@@ -186,12 +188,6 @@ selected_columns = st.multiselect(
     "Select Columns to Filter", available_columns, default=available_columns
 )
 
-# ------------------ FILTERS CACHE ------------------
- 
-def fetch_distinct_from_db(column):
-    df = fetch_data(f"SELECT DISTINCT {column} FROM exam_candidates")
-    return df[column].dropna().tolist()
-
 # ------------------ STEP 3: APPLY FILTERS ------------------
 st.subheader("Apply Filters")
 
@@ -209,48 +205,14 @@ for col in selected_columns:
             age_groups,
             default=age_groups
         )
-        
-        ages = fetch_data(
-            "SELECT DISTINCT TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age FROM exam_candidates"
-        )["Age"].tolist()
-        
-        # Filter ages based on selected groups
-        selected_ages = []
-        if "Below 18" in selected_age_groups:
-            selected_ages.extend([age for age in ages if age < 18])
-        if "Above 18" in selected_age_groups:
-            selected_ages.extend([age for age in ages if age >= 18])
-        
-        filter_values["Age"] = selected_ages if selected_ages else ages
+        filter_values["Age"] = selected_age_groups
     else:
-        cache_key = f"distinct:{col}"
-
-        distinct_vals = get_or_set_distinct_values(cache_key,lambda: fetch_distinct_from_db(col))
-        filter_values[col] = st.multiselect(f"{col}:", ["All"] + distinct_vals, default=["All"])
-
-# ------------------ BUILD WHERE CLAUSE ------------------
-filters = []
-for col, values in filter_values.items():
-    if "All" not in values:
-        if col == "Age":
-            # Create WHERE clause for age based on selected ranges
-            if "Below 18" in selected_age_groups and "Above 18" in selected_age_groups:
-                filters.append(
-                    f"(TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) < 18 OR TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 18)"
-                )
-            elif "Below 18" in selected_age_groups:
-                filters.append(
-                    f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) < 18"
-                )
-            elif "Above 18" in selected_age_groups:
-                filters.append(
-                    f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 18"
-                )
-        else:
-            value_list = ", ".join(f"'{v}'" for v in values)
-            filters.append(f"{col} IN ({value_list})")
-
-where_clause = " AND ".join(filters) if filters else "1=1"
+        distinct_vals = sorted(df[col].dropna().unique().tolist())
+        filter_values[col] = st.multiselect(
+            f"{col}:",
+            ["All"] + distinct_vals,
+            default=["All"],
+        )
 
 # ============================================================
 # CHART TYPE SELECTION
@@ -267,32 +229,19 @@ st.markdown("---")
 st.subheader("🧾 Generate Invoice for This Report")
 
 if st.button("Generate Invoice", type="primary"):
-    # Check existing payment status
-    payment_df = fetch_data(f"SELECT payment FROM users WHERE email_address='{user_email}'")
-    user_has_paid = not payment_df.empty and payment_df["payment"].values[0]
-    
-    if st.session_state.payment_verified:
-        user_has_paid = True
+    user_has_paid = bool(st.session_state.get("payment_verified", False))
 
     # Save selections to session state
     st.session_state.saved_group = selected_group
     st.session_state.saved_columns = selected_columns
     st.session_state.saved_filters = filter_values
     st.session_state.saved_charts = selected_charts
-    st.session_state.saved_where_clause = where_clause
 
     if user_has_paid:
         st.success("✅ You already have an active payment.")
     else:
         # Ensure user_id exists
-        if not user_id or user_id == 0:
-            user_df = fetch_data(f"SELECT user_id FROM users WHERE email_address='{user_email}' LIMIT 1")
-            if not user_df.empty:
-                user_id = int(user_df["user_id"].iloc[0])
-                st.session_state.user_id = user_id
-            else:
-                st.error("User ID not found. Please re-login.")
-                st.stop()
+        user_has_paid = False
 
         # Prepare report payload
         report_payload = {
@@ -483,7 +432,6 @@ if st.session_state.payment_verified and st.session_state.invoice_ref:
     saved_columns = st.session_state.get("saved_columns", [])
     saved_filters = st.session_state.get("saved_filters", {})
     saved_charts = st.session_state.get("saved_charts", [])
-    saved_where = st.session_state.get("saved_where_clause", "1=1")
     invoice_ref = st.session_state.invoice_ref
     
     if not saved_group:
@@ -491,57 +439,31 @@ if st.session_state.payment_verified and st.session_state.invoice_ref:
         st.stop()
     
     # ========================================
-    # STEP 2: BUILD REPORT QUERY
+    # APPLY FILTERS (PANDAS — NO DB)
     # ========================================
-    if saved_group == "Demographic Analysis":
-        report_query = f"""
-        SELECT ExamYear, Sex, Disability,
-               TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age
-        FROM exam_candidates
-        WHERE {saved_where}
-        """
-    elif saved_group == "Geographic & Institutional Insights":
-        report_query = f"""
-        SELECT ExamYear, State, Centre
-        FROM exam_candidates
-        WHERE {saved_where}
-        """
-    elif saved_group == "Equity & Sponsorship":
-        report_query = f"""
-        SELECT ExamYear, Sponsor, Sex, Disability
-        FROM exam_candidates
-        WHERE {saved_where}
-        """
-    elif saved_group == "Temporal & Progression Trends":
-        report_query = f"""
-        SELECT ExamYear
-        FROM exam_candidates
-        WHERE {saved_where}
-        """
-    else:
-        report_query = f"SELECT * FROM exam_candidates WHERE {saved_where}"
-    
-    # ========================================
-    # STEP 3: LOAD DATA (Once)
-    # ========================================
-    if not st.session_state.get("data_loaded", False):
-        with st.spinner("🔄 Loading report data..."):
-            try:
-                filtered_df = fetch_data(report_query)
-                
-                if filtered_df.empty:
-                    st.warning("⚠️ No data matches your filters.")
-                    st.session_state.filtered_df = None
-                    st.session_state.report_ready = False
-                else:
-                    st.session_state.filtered_df = filtered_df
-                    st.session_state.data_loaded = True
-                    st.session_state.report_ready = True
-                    st.success(f"✅ Loaded {len(filtered_df):,} records!")
-            except Exception as e:
-                st.error(f"❌ Error loading data: {str(e)}")
-                st.session_state.report_ready = False
-                st.stop()
+    with st.spinner("🔄 Preparing report data..."):
+        filtered_df = df.copy()
+
+        for col, values in saved_filters.items():
+            if col == "Age":
+               age_mask = False
+               if "Below 18" in values:
+                   age_mask |= filtered_df["Age"] < 18
+               if "Above 18" in values:
+                   age_mask |= filtered_df["Age"] >= 18
+               filtered_df = filtered_df[age_mask]
+
+            elif "All" not in values:
+                filtered_df = filtered_df[filtered_df[col].isin(values)]
+
+        if filtered_df.empty:
+            st.warning("⚠️ No data matches your filters.")
+            st.session_state.filtered_df = None
+            st.session_state.report_ready = False
+        else:
+            st.session_state.filtered_df = filtered_df
+            st.session_state.report_ready = True
+            st.success(f"✅ Loaded {len(filtered_df):,} records!")
     
     # ========================================
     # STEP 4: GENERATE PAID INVOICE PDF (Once)
@@ -639,53 +561,56 @@ if st.session_state.payment_verified and st.session_state.invoice_ref:
         key="report_name_input"
     )
     
-    # ========================================
+# ========================================
 # STEP 7: SAVE REPORT TO DATABASE
 # ========================================
-if not st.session_state.get("report_saved", False):
-    if st.button("💾 Save Report", type="primary"):
-        if not report_name.strip():
-            st.error("❌ Report name cannot be empty.")
-        else:
-            try:
-                save_user_report(
-                    user_id=st.session_state.user_id,
-                    invoice_ref=invoice_ref,
-                    report_group=saved_group,
-                    report_name=report_name.strip(),
-                    filters=saved_filters,
-                    charts=saved_charts,
-                    pdf_path=st.session_state.paid_pdf_path
-                )
-                st.session_state.report_saved = True
-                st.session_state.report_ready = True  # ← ADD THIS CRITICAL LINE
-                st.success("✅ Report saved successfully!")
-                st.balloons()
-            except Exception as e:
-                st.error(f"❌ Failed to save report: {str(e)}")
-else:
-    st.success("✅ Report already saved to your account!")
-    st.session_state.report_ready = True  # ← ALSO SET HERE FOR ALREADY SAVED REPORTS
+    if not st.session_state.get("report_saved", False):
+
+        if st.button("💾 Save Report", type="primary"):
+
+            if not report_name.strip():
+                st.error("❌ Report name cannot be empty.")
+            else:
+                try:
+                    save_user_report(
+                        user_id=user_id,
+                        invoice_ref=invoice_ref,
+                        report_group=saved_group,
+                        report_name=report_name.strip(),
+                        filters=saved_filters,
+                        charts=saved_charts,
+                        pdf_path=st.session_state.paid_pdf_path
+                    )
+                    st.session_state.report_saved = True
+                    st.success("✅ Report saved successfully!")
+                    st.balloons()
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Failed to save report: {str(e)}")
+
+    else:
+        st.success("✅ Report already saved to your account!")
     
     # ========================================
     # STEP 8: DOWNLOAD & VIEW BUTTONS
     # ========================================
-    st.markdown("---")
+        st.markdown("---")
     
-    col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
     
-    with col1:
-        with open(st.session_state.paid_pdf_path, "rb") as f:
-            st.download_button(
-                "📄 Download Invoice PDF",
-                f,
-                file_name=os.path.basename(st.session_state.paid_pdf_path),
-                mime="application/pdf",
-                key="download_paid_invoice"
-            )
+        with col1:
+            with open(st.session_state.paid_pdf_path, "rb") as f:
+                st.download_button(
+                    "📄 Download Invoice PDF",
+                    f,
+                    file_name=os.path.basename(st.session_state.paid_pdf_path),
+                    mime="application/pdf",
+                    key="download_paid_invoice"
+                )
     
-    with col2:
-        if st.button("📊 View Report", type="primary", key="view_report_btn"):
-            st.switch_page("pages/view_report.py")
+        with col2:
+            if st.button("📊 View Report", type="primary", key="view_report_btn"):
+               st.switch_page("pages/view_report.py")
     
-    st.info("🗂️ Your report is saved for 30 days in your account.")
+        st.info("🗂️ Your report is saved for 30 days in your account.")

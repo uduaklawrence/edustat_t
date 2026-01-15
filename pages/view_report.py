@@ -59,7 +59,7 @@ if df.empty:
     st.stop()
 
 st.success(f"✅ Showing results for: **{saved_group}**")
-st.info(f"📊 **Total Records:** {len(df):,} | **Columns:** {', '.join(df.columns.tolist())}")
+# st.info(f"📊 **Total Records:** {len(df):,} | **Columns:** {', '.join(df.columns.tolist())}")
 
 top_age = df['Age'].mode()[0] if 'Age' in df.columns else "N/A"
 female_pct = (df["Sex"].str.lower().eq("female").sum() / len(df) * 100) if "Sex" in df.columns else 0
