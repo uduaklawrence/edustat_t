@@ -1,100 +1,14 @@
-# ==============================
-# 📊 CREATE REPORT - CORRECTED VERSION
-# ==============================
-
 import streamlit as st
-import streamlit.components.v1 as components
-import os
 import json
-import time
-from datetime import datetime, timedelta
-import base64
+from datetime import datetime
 from db_queries import (
     fetch_data,
-    update_payment_status,
     create_invoice_record,
-    attach_paystack_ref_to_invoice,
-    mark_invoice_paid_by_paystack_ref,
-    save_user_report,
 )
 from redis_cache import get_or_set_distinct_values
-from paystack import initialize_transaction, verify_transaction
-from invoice_pdf import generate_invoice_pdf
 
 # ------------------ SETTINGS ------------------
 SUBSCRIPTION_AMOUNT = 20000.00  # ₦
-WATERMARK_PATH = r"altered_edustat.jpg"
-
-def get_base64_image(img_path):
-    with open(img_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode()
-
-def generate_report_description(report_group, filters, charts):
-    """
-    Generates a human-readable report description
-    based on report group, filters, and charts.
-    """
-
-    years = filters.get("ExamYear", [])
-    states = filters.get("State", [])
-    centres = filters.get("Centre", [])
-    sponsors = filters.get("Sponsor", [])
-    genders = filters.get("Sex", [])
-    disabilities = filters.get("Disability", [])
-
-    age_desc = ""
-    if "Age" in filters:
-        age_desc = "with age groups (Under 18 and 18 & above)"
-
-    year_text = ", ".join(map(str, years)) if years else "the selected years"
-    chart_text = ", ".join(charts).lower() if charts else "tabular views"
-
-    if report_group == "Geographic & Institutional Insights":
-        return f"""
-This report shows the number of candidates registered across selected states and examination centres
-for school examinations conducted in {year_text}.
-
-The analysis focuses on institutions in {", ".join(states) if states else "the selected states"},
-considering gender distribution, special needs status, and candidate age categories {age_desc}.
-
-This report contains tables, statistical summaries (mean, minimum, maximum, variance, and standard deviation),
-and visualizations including {chart_text}. The primary chart places states or centres on the horizontal axis
-to enable comparison of candidate volumes.
-""".strip()
-
-    if report_group == "Demographic Analysis":
-        return f"""
-This report provides a demographic breakdown of candidates registered for school examinations
-during {year_text}.
-
-The analysis examines gender, disability status, and age group distributions {age_desc},
-highlighting patterns across candidate populations.
-
-The report includes tables, summary statistics, and visualizations such as {chart_text},
-with interpretation guidance provided beneath each chart.
-""".strip()
-
-    if report_group == "Equity & Sponsorship":
-        return f"""
-This report analyses sponsorship participation and equity distribution in school examinations
-across {year_text}.
-
-The focus is on sponsor categories, gender inclusion, and special needs representation.
-Tables, statistical summaries, and {chart_text} are used to visualize sponsorship reach
-and demographic balance.
-""".strip()
-
-    if report_group == "Temporal & Progression Trends":
-        return f"""
-This report evaluates candidate registration trends over time, highlighting progression
-patterns across {year_text}.
-
-The analysis uses statistical indicators and visualizations such as {chart_text}
-to identify growth patterns, fluctuations, and long-term participation trends.
-""".strip()
-
-    return "This report provides analytical insights based on the selected parameters."
-
 
 # ------------------ AUTH CHECK ------------------
 if not st.session_state.get("logged_in", False):
@@ -102,217 +16,263 @@ if not st.session_state.get("logged_in", False):
     st.stop()
 
 st.set_page_config(page_title="Create Report", layout="wide")
-st.title("📊 Create Custom Reports")
+
+# Load existing CSS
+with open('styles.css') as f:
+    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+# Additional CSS for report selection UI
+st.markdown("""
+<style>
+    /* Header Section */
+    .report-selection-header {
+        text-align: center;
+        margin-bottom: 40px;
+    }
+    
+    .report-selection-title {
+        font-size: 36px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 12px;
+    }
+    
+    .report-selection-subtitle {
+        font-size: 18px;
+        color: var(--text-secondary);
+        max-width: 800px;
+        margin: 0 auto;
+        line-height: 1.6;
+    }
+    
+    /* Group Tabs */
+    .group-tabs-container {
+        display: flex;
+        gap: 12px;
+        margin: 40px 0 30px 0;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .group-tab {
+        background: white;
+        padding: 14px 28px;
+        border-radius: 8px;
+        border: 2px solid var(--border-light);
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--text-secondary);
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 15px;
+    }
+    
+    .group-tab:hover {
+        border-color: var(--primary-blue);
+        color: var(--primary-blue);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transform: translateY(-2px);
+    }
+    
+    .group-tab.active {
+        background: var(--primary-navy);
+        color: white;
+        border-color: var(--primary-navy);
+        box-shadow: 0 4px 12px rgba(30, 39, 73, 0.3);
+    }
+    
+    /* Subgroup Cards */
+    .subgroup-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 24px;
+        margin-top: 40px;
+    }
+    
+    .subgroup-card {
+        background: white;
+        border-radius: 12px;
+        padding: 28px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border: 1px solid var(--border-light);
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        min-height: 280px;
+    }
+    
+    .subgroup-card:hover {
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        transform: translateY(-4px);
+        border-color: var(--accent-blue);
+    }
+    
+    .subgroup-card-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 16px;
+        min-height: 52px;
+        display: flex;
+        align-items: center;
+    }
+    
+    .subgroup-card-description {
+        color: var(--text-secondary);
+        font-size: 15px;
+        line-height: 1.6;
+        flex-grow: 1;
+        margin-bottom: 20px;
+    }
+    
+    /* Explore Button */
+    div[data-testid="stButton"] button.explore-btn {
+        background-color: var(--primary-navy) !important;
+        color: white !important;
+        padding: 12px 24px !important;
+        border-radius: 8px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        width: 100% !important;
+        transition: all 0.3s ease !important;
+        font-size: 15px !important;
+    }
+    
+    div[data-testid="stButton"] button.explore-btn:hover {
+        background-color: var(--primary-blue) !important;
+        box-shadow: 0 4px 12px rgba(30, 39, 73, 0.3) !important;
+        transform: translateY(-2px) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 user_email = st.session_state.get("user_email")
 user_id = st.session_state.get("user_id", 0)
 
 # ------------------ SESSION DEFAULTS ------------------
-st.session_state.setdefault("paystack_reference", None)
+st.session_state.setdefault("selected_main_group", None)
+st.session_state.setdefault("selected_subgroup", None)
 st.session_state.setdefault("invoice_ref", None)
 st.session_state.setdefault("payment_verified", False)
-st.session_state.setdefault("saved_group", None)
-st.session_state.setdefault("saved_columns", None)
-st.session_state.setdefault("saved_filters", None)
-st.session_state.setdefault("saved_charts", None)
-st.session_state.setdefault("saved_where_clause", None)
-st.session_state.setdefault("pending_invoice_saved", False)
-st.session_state.setdefault("report_saved", False)
-st.session_state.setdefault("filtered_df", None)
-st.session_state.setdefault("report_ready", False)
 
-# ------------------ STEP 1: INSIGHT GROUP SELECTION ------------------
-insight_groups = [
-    "Demographic Analysis",
-    "Geographic & Institutional Insights",
-    "Equity & Sponsorship",
-    "Temporal & Progression Trends",
-]
-selected_group = st.selectbox("Select Insight Group", insight_groups)
-
-# ------------------ STEP 2: COLUMN SELECTION ------------------
-columns_map = {
-    "Demographic Analysis": ["ExamYear", "Sex", "Disability", "Age"],
-    "Geographic & Institutional Insights": ["ExamYear", "State", "Centre"],
-    "Equity & Sponsorship": ["ExamYear", "Sponsor", "Sex", "Disability"],
-    "Temporal & Progression Trends": ["ExamYear"],
-}
-available_columns = columns_map[selected_group]
-selected_columns = st.multiselect(
-    "Select Columns to Filter", available_columns, default=available_columns
-)
-
-# ------------------ FILTERS CACHE ------------------
-
-def fetch_distinct_from_db(column):
-    df = fetch_data(f"SELECT DISTINCT {column} FROM exam_candidates")
-    return df[column].dropna().tolist()
-
-# ------------------ STEP 3: APPLY FILTERS ------------------
-st.subheader("Apply Filters")
-
-filter_values = {}
-selected_age_groups = []  # Initialize outside loop
-
-for col in selected_columns:
-    if col == "Age":
-        # Define age groups
-        age_groups = ["Below 18", "Above 18"]
-
-        # Allow users to select age groups
-        selected_age_groups = st.multiselect(
-            "Select Age Groups:",
-            age_groups,
-            default=age_groups
-        )
-        
-        ages = fetch_data(
-            "SELECT DISTINCT TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) AS Age FROM exam_candidates"
-        )["Age"].tolist()
-        
-        # Filter ages based on selected groups
-        selected_ages = []
-        if "Below 18" in selected_age_groups:
-            selected_ages.extend([age for age in ages if age < 18])
-        if "Above 18" in selected_age_groups:
-            selected_ages.extend([age for age in ages if age >= 18])
-        
-        filter_values["Age"] = selected_ages if selected_ages else ages
-    else:
-        cache_key = f"distinct:{col}"
-
-        distinct_vals = get_or_set_distinct_values(cache_key,lambda: fetch_distinct_from_db(col))
-        filter_values[col] = st.multiselect(f"{col}:", ["All"] + distinct_vals, default=["All"])
-
-# ------------------ BUILD WHERE CLAUSE ------------------
-filters = []
-for col, values in filter_values.items():
-    if "All" not in values:
-        if col == "Age":
-            # Create WHERE clause for age based on selected ranges
-            if "Below 18" in selected_age_groups and "Above 18" in selected_age_groups:
-                filters.append(
-                    f"(TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) < 18 OR TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 18)"
-                )
-            elif "Below 18" in selected_age_groups:
-                filters.append(
-                    f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) < 18"
-                )
-            elif "Above 18" in selected_age_groups:
-                filters.append(
-                    f"TIMESTAMPDIFF(YEAR, DateOfBirth, CURDATE()) >= 18"
-                )
-        else:
-            value_list = ", ".join(f"'{v}'" for v in values)
-            filters.append(f"{col} IN ({value_list})")
-
-where_clause = " AND ".join(filters) if filters else "1=1"
-
-# ============================================================
-# CHART TYPE SELECTION
-# ============================================================
-st.markdown("---")
-st.subheader("Select Chart Types")
-chart_options = ["Table/Matrix", "Bar Chart", "Pie Chart", "Line Chart"]
-selected_charts = st.multiselect("Select chart(s):", chart_options, default=["Table/Matrix"])
-
-# ========================================
-# GENERATE REPORT DESCRIPTION (Preview)
-# ========================================
-if selected_columns and selected_charts:
-    # Generate description using CURRENT selections
-    report_description = generate_report_description(
-        report_group=selected_group,
-        filters=filter_values,
-        charts=selected_charts
-    )
-
-    st.markdown("---")
-    st.subheader("📄 Report Description Preview")
-
-    with st.expander("📋 View Full Description", expanded=False):
-        st.markdown(report_description)
-        st.caption("ℹ️ This description will be included in your invoice.")
-else:
-    report_description = "Report description will be generated based on your selections."
-
-
-# ============================================================
-# STEP 5: GENERATE PENDING INVOICE
-# ============================================================
-st.markdown("---")
-st.subheader("🧾 Generate Invoice for This Report")
-
-if st.button("Generate Invoice", type="primary"):
-    # Check existing payment status
-    payment_df = fetch_data(f"SELECT payment FROM users WHERE email_address='{user_email}'")
-    user_has_paid = not payment_df.empty and payment_df["payment"].values[0]
-    
-    if st.session_state.payment_verified:
-        user_has_paid = True
-
-    if user_has_paid:
-        # Save all selections to session state
-        st.session_state.saved_group = selected_group
-        st.session_state.saved_columns = selected_columns
-        st.session_state.saved_filters = filter_values
-        st.session_state.saved_charts = selected_charts
-        st.session_state.saved_where_clause = where_clause
-        st.session_state.saved_description = report_description
-        st.session_state.payment_verified = True
-        
-        # Navigate to invoice page
-        st.switch_page("pages/view_invoice.py")
-    else:
-        # Ensure user_id exists
-        if not user_id or user_id == 0:
-            user_df = fetch_data(f"SELECT user_id FROM users WHERE email_address='{user_email}' LIMIT 1")
-            if not user_df.empty:
-                user_id = int(user_df["user_id"].iloc[0])
-                st.session_state.user_id = user_id
-            else:
-                st.error("User ID not found. Please re-login.")
-                st.stop()
-
-        # Prepare report payload
-        report_payload = {
-            "report_group": selected_group,
-            "filters": filter_values,
-            "charts": selected_charts,
-            "columns": selected_columns,
-            "description": report_description,
-            "created_at": datetime.now().isoformat(),
+# ------------------ REPORT STRUCTURE ------------------
+report_structure = {
+    "Demographic Analysis": {
+        "icon": "👥",
+        "subgroups": {
+            "Age Distribution Analysis": "Analyzes candidate age ranges, trends, and appropriateness across exam years and types.",
+            "Gender Equity Analysis": "Examines male-to-female ratios, gender balance trends, and distribution across exam types.",
+            "Special Needs & Disability Analysis": "Tracks inclusion rates and disability representation trends over time and by demographics."
         }
+    },
+    "Geographic & Institutional Insights": {
+        "icon": "🗺️",
+        "subgroups": {
+            "State-Level Distribution": "Identifies enrollment patterns, top/bottom states, and regional education access.",
+            "Centre/School Comparison": "Compares examination centres by popularity, capacity, and geographic distribution.",
+            "Origin Analysis": "Maps where candidates come from and migration patterns for education."
+        }
+    },
+    "Examination & Academic Performance": {
+        "icon": "📊",
+        "subgroups": {
+            "Exam Type Analysis": "Compares school exams vs private exams distribution, preferences, and trends.",
+            "Subject Performance Analysis": "Reveals most popular subjects, enrollment patterns, and subject difficulty levels.",
+            "Grade Distribution Analysis": "Shows overall performance, pass/fail rates, and grade patterns across variables."
+        }
+    },
+    "Temporal & Progression Trends": {
+        "icon": "📈",
+        "subgroups": {
+            "Year-over-Year Enrollment Trends": "Tracks enrollment growth/decline and education system expansion over time.",
+            "Birth Cohort Analysis": "Examines age-appropriate enrollment and generational education patterns."
+        }
+    },
+    "Cross-Dimensional Analysis": {
+        "icon": "🔄",
+        "subgroups": {
+            "Gender-Subject Preference": "Identifies gender biases in subject selection and male/female-dominated fields.",
+            "Gender-Performance Analysis": "Compares academic outcomes between male and female candidates.",
+            "Age-Performance Correlation": "Determines if age affects exam success and identifies optimal age ranges.",
+            "State-Performance Comparison": "Ranks states by academic outcomes and identifies regional performance gaps.",
+            "Disability-Performance Analysis": "Measures achievement gaps between students with and without disabilities.",
+            "Exam Type-Performance Analysis": "Compares grade outcomes between school and private examinations.",
+            "Centre-Performance Rankings": "Ranks centres by academic quality and identifies best/worst performers."
+        }
+    },
+    "Statistical Insights & Summaries": {
+        "icon": "📉",
+        "subgroups": {
+            "Descriptive Statistics": "Provides mean, median, standard deviation, and outlier detection across all metrics.",
+            "Correlation Analysis": "Identifies relationships between variables and factors predicting academic success."
+        }
+    }
+}
 
-        try:
-            # Create invoice record with PENDING status
-            invoice_ref = create_invoice_record(
-                user_id=user_id,
-                total=int(SUBSCRIPTION_AMOUNT),
-                data_dict=report_payload,
-            )
+# ------------------ HEADER SECTION ------------------
+st.markdown("""
+<div class="report-selection-header">
+    <div class="report-selection-title">Select Report Group</div>
+    <div class="report-selection-subtitle">
+        Choose a report group to begin your data analysis journey. Each group provides specialized 
+        insights tailored to your needs.
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-            if not invoice_ref:
-                st.error("Failed to create invoice. Please try again.")
-                st.stop()
+# ------------------ GROUP SELECTION TABS ------------------
+# Initialize selected group if not set
+if 'selected_main_group' not in st.session_state or st.session_state.selected_main_group is None:
+    st.session_state.selected_main_group = list(report_structure.keys())[0]
 
-            # Save all selections to session state
-            st.session_state.invoice_ref = invoice_ref
-            st.session_state.saved_group = selected_group
-            st.session_state.saved_columns = selected_columns
-            st.session_state.saved_filters = filter_values
-            st.session_state.saved_charts = selected_charts
-            st.session_state.saved_where_clause = where_clause
-            st.session_state.saved_description = report_description
-            st.session_state.pending_invoice_saved = True
-            st.session_state.payment_verified = False
+# Create clickable group tabs
+cols = st.columns(len(report_structure))
+for idx, (group_name, group_data) in enumerate(report_structure.items()):
+    with cols[idx]:
+        if st.button(
+            f"{group_data['icon']} {group_name}", 
+            key=f"group_{idx}",
+            use_container_width=True
+        ):
+            st.session_state.selected_main_group = group_name
+            st.rerun()
 
-            st.success("✅ Invoice created successfully!")
-            st.info("Redirecting to invoice page...")
+# Display selected group indicator
+selected_group = st.session_state.selected_main_group
+st.markdown(f"### 📋 {selected_group}")
+st.markdown("---")
+
+# ------------------ SUBGROUP CARDS ------------------
+subgroups = report_structure[selected_group]["subgroups"]
+
+# Create grid of subgroup cards
+num_cols = 3
+rows = [list(subgroups.items())[i:i+num_cols] for i in range(0, len(subgroups), num_cols)]
+
+for row in rows:
+    cols = st.columns(num_cols)
+    for idx, (subgroup_name, description) in enumerate(row):
+        with cols[idx]:
+            st.markdown(f"""
+            <div class="subgroup-card">
+                <div class="subgroup-card-title">{subgroup_name}</div>
+                <div class="subgroup-card-description">{description}</div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Navigate to invoice page
-            st.switch_page("pages/view_invoice.py")
+            if st.button("Explore Filters →", key=f"explore_{subgroup_name}", type="primary"):
+                st.session_state.selected_subgroup = subgroup_name
+                st.session_state.selected_main_group = selected_group
+                
+                # Redirect to filters page (you'll create this next)
+                st.switch_page("pages/report_filters.py")
 
-        except Exception as e:
-            st.error(f"Error creating invoice: {str(e)}")
-            st.stop()
+# Fill empty columns in last row
+if len(row) < num_cols:
+    for _ in range(num_cols - len(row)):
+        with cols[len(row)]:
+            st.empty()
+
+st.markdown("<br><br>", unsafe_allow_html=True)
