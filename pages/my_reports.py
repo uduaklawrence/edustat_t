@@ -176,6 +176,8 @@ user_id = st.session_state.get("user_id")
 
 # Fetch reports
 reports = fetch_user_reports(user_id)
+reports = reports.reset_index(drop=True)
+reports.index = reports.index + 1
 
 # Search and filter section
 col1, col2 = st.columns([3, 1])

@@ -10,11 +10,16 @@ from reportlab.platypus import (
 )
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from datetime import datetime
 import os
 from io import BytesIO
 from watermark import add_watermark
 
+pdfmetrics.registerFont(
+    TTFont("DejaVu", "assets/fonts/DejaVuSans.ttf")
+)
 
 # ------------------ CONFIG ------------------
 OUTPUT_DIR = "generated_invoices"
@@ -47,7 +52,11 @@ def generate_invoice_pdf(
     )
     elements = []
     styles = getSampleStyleSheet()
- 
+
+    styles["Title"].fontName = "DejaVu"
+    styles["Heading2"].fontName = "DejaVu"
+    styles["Normal"].fontName = "DejaVu"
+
     # Custom styles
     title_style = styles["Title"]
     title_style.alignment = TA_CENTER
@@ -79,7 +88,7 @@ def generate_invoice_pdf(
                 ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
                 ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                ("FONTNAME", (0, 0), (-1, -1), "DejaVu"),
                 ("FONTSIZE", (0, 0), (-1, -1), 10),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ]
@@ -103,7 +112,7 @@ def generate_invoice_pdf(
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 0), (-1, -1), "DejaVu"),
                 ("FONTSIZE", (0, 0), (-1, -1), 10),
                 ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
                 ("BACKGROUND", (-3, -1), (-1, -1), colors.whitesmoke),
@@ -115,7 +124,7 @@ def generate_invoice_pdf(
  
     # ---------------- STATUS ----------------
     if "PAID" in status.upper():
-        status_html = '<b>Status:</b> <font color="green">PAID ✅</font>'
+        status_html = '<b>Status:</b> <font color="green">PAID ✓</font>'
     else:
         status_html = '<b>Status:</b> <font color="orange">Pending Payment</font>'
  

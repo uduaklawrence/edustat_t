@@ -1,96 +1,435 @@
 import streamlit as st
 import plotly.express as px
-from db_queries import fetch_data
- 
+import plotly.graph_objects as go
+from Analytics_layer import get_exam_dataset
+import pandas as pd
+
 # -------------------- AUTH CHECK --------------------
 if not st.session_state.get('logged_in', False):
     st.warning("Please sign in to view the dashboard.")
     st.switch_page("pages/Login.py")
     st.stop()
- 
+
 # -------------------- PAGE CONFIG --------------------
-st.set_page_config(page_title="Edustat WAEC Dashboard", layout="wide")
- 
+st.set_page_config(page_title="Edustat WAEC Dashboard", layout="wide", initial_sidebar_state="collapsed")
+
+# -------------------- CUSTOM CSS --------------------
+st.markdown("""
+<style>
+    /* Main container styling */
+    .main {
+        padding: 2rem 3rem;
+        background-color: #f8f9fa;
+    }
+    
+    /* Header styling */
+    .welcome-header {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin-bottom: 0.5rem;
+    }
+    
+    .subtitle {
+        font-size: 1.1rem;
+        color: #6c757d;
+        margin-bottom: 2rem;
+    }
+    
+    /* KPI Card styling */
+    .kpi-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        height: 100%;
+        transition: transform 0.2s;
+    }
+    
+    .kpi-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+    
+    .kpi-icon {
+        background: #1e293b;
+        color: white;
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .kpi-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin-bottom: 0.25rem;
+    }
+    
+    .kpi-label {
+        font-size: 0.95rem;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    
+    /* Section styling */
+    .section-header {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1a1a1a;
+        margin: 2rem 0 1rem 0;
+    }
+    
+    /* Filter section */
+    .filter-section {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    
+    /* Chart container */
+    .chart-container {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+    
+    .chart-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #1a1a1a;
+        margin-bottom: 1rem;
+    }
+    
+    /* Table styling */
+    .dataframe {
+        border: none !important;
+    }
+    
+    /* Activity card */
+    .activity-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin-bottom: 1rem;
+    }
+    
+    .activity-item {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #e9ecef;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .activity-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .activity-item:last-child {
+        border-bottom: none;
+    }
+    
+    .activity-icon {
+        background: #1e293b;
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        font-size: 1.2rem;
+    }
+    
+    .activity-title {
+        font-weight: 600;
+        color: #1a1a1a;
+        margin-bottom: 0.25rem;
+    }
+    
+    .activity-desc {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        border-radius: 8px;
+        font-weight: 500;
+        padding: 0.5rem 1.5rem;
+        border: none;
+        background: #1e293b;
+        color: white;
+        transition: all 0.2s;
+    }
+    
+    .stButton > button:hover {
+        background: #0f172a;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    /* Hide streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
+
+@st.cache_data(show_spinner=False)
+def load_dataset():
+    return get_exam_dataset()
+
+df = load_dataset()
+
 # -------------------- HEADER --------------------
-col1, col2 = st.columns([6, 1])
-with col1:
-    st.title("🎓 Edustat WAEC — Dashboard")
- 
-with col2:
-    # Logout button in top-right corner
-    if st.button("🔓 Logout"):
+col_header, col_logout = st.columns([6, 1])
+with col_header:
+    username = st.session_state.get('user_email', 'User').split('@')[0].title()
+    st.markdown(f'<div class="welcome-header">Welcome back, {username}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Here\'s your educational analytics overview</div>', unsafe_allow_html=True)
+
+with col_logout:
+    if st.button("🔓 Logout", key="logout_btn"):
         st.session_state.logged_in = False
         st.session_state.user_email = None
         st.success("You have been logged out.")
         st.switch_page("pages/Landing.py")
- 
-st.markdown("---")  # nice visual separator
- 
+
 # -------------------- KPI CARDS --------------------
-kpi_query = "SELECT Sex, COUNT(*) AS Count FROM exam_candidates GROUP BY Sex"
-kpi_df = fetch_data(kpi_query)
- 
-total_candidates = kpi_df['Count'].sum() if not kpi_df.empty else 0
-male_count = kpi_df[kpi_df['Sex'] == 'Male']['Count'].sum() if not kpi_df.empty else 0
-female_count = kpi_df[kpi_df['Sex'] == 'Female']['Count'].sum() if not kpi_df.empty else 0
- 
-disability_query = "SELECT COUNT(*) AS Count FROM exam_candidates WHERE Disability IS NOT NULL AND Disability != 'None'"
-disability_count = fetch_data(disability_query)['Count'].values[0] if not fetch_data(disability_query).empty else 0
- 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("👥 Total Candidates", f"{total_candidates:,}")
-col2.metric("♂️ Males", f"{male_count:,}")
-col3.metric("♀️ Females", f"{female_count:,}")
-col4.metric("♿ Disabilities", f"{disability_count:,}")
- 
-# -------------------- DATA INSPECT --------------------
-st.header("🔍 Inspect the Data")
-# Modify the query to summarize data based on ExamYear and State
-aggregated_query = """
-SELECT ExamYear, State, COUNT(*) AS NumberOfCandidates
-FROM exam_candidates
-GROUP BY ExamYear, State
-"""
-aggregated_data = fetch_data(aggregated_query)
- 
-# Create a dropdown for state selection
-states = aggregated_data['State'].unique()  # Get unique states
-selected_state = st.selectbox('Select State to Filter', options=['All States'] + list(states))
- 
-# Apply filter based on selected state
-if selected_state != 'All States':
-    aggregated_data = aggregated_data[aggregated_data['State'] == selected_state]
- 
-# Display the table without the 'State' column
-aggregated_data = aggregated_data.drop(columns=['State'])
-st.dataframe(aggregated_data)
- 
-# -------------------- QUICK INSIGHTS --------------------
-st.header("📊 Quick Insights")
-col1, col2 = st.columns(2)
- 
-# Candidates per Year
+total_candidates = len(df)
+male_count = (df["Sex"].str.lower() == "male").sum()
+female_count = (df["Sex"].str.lower() == "female").sum()
+disability_count = df[(df["Disability"].notna()) & (df["Disability"] != "None")].shape[0]
+
+col1, col2, col3, col4 = st.columns(4, gap="medium")
+
 with col1:
-    yearly_df = fetch_data("SELECT ExamYear, COUNT(*) AS Count FROM exam_candidates GROUP BY ExamYear")
-    if not yearly_df.empty:
-        fig = px.bar(yearly_df, x='ExamYear', y='Count', color='ExamYear', title="Candidates per Year")
-        st.plotly_chart(fig,config= {'displayModeBar': False}, width='stretch')
- 
-# Gender distribution
+    st.markdown(f"""
+    <div class="kpi-card">
+        <div class="kpi-icon">👥</div>
+        <div class="kpi-value">{total_candidates:,}</div>
+        <div class="kpi-label">Total Candidates</div>
+    </div>
+    """, unsafe_allow_html=True)
+
 with col2:
-    if not kpi_df.empty:
-        fig = px.pie(kpi_df, values='Count', names='Sex', hole=0.3, title="Overall Male vs Female")
-        st.plotly_chart(fig,config= {'displayModeBar': False}, width='stretch')
- 
-# Top 3 Centres
-st.markdown("---")
-st.subheader("Top 3 Centres")
-centres_df = fetch_data("SELECT Centre, State, COUNT(*) AS Registered_candidates FROM exam_candidates GROUP BY Centre, State ORDER BY COUNT(*) DESC LIMIT 3")
-# Display the result as a table
-st.dataframe(centres_df)
- 
-# -------------------- REPORT LINK --------------------
-st.subheader("📑 Create Custom Reports")
-st.write("Click below to create and download reports with your filters and visualizations.")
-if st.button("Go to Create Report"):
-    st.switch_page("pages/Create_Report.py")
+    st.markdown(f"""
+    <div class="kpi-card">
+        <div class="kpi-icon">♂️</div>
+        <div class="kpi-value">{male_count:,}</div>
+        <div class="kpi-label">Males</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col3:
+    st.markdown(f"""
+    <div class="kpi-card">
+        <div class="kpi-icon">♀️</div>
+        <div class="kpi-value">{female_count:,}</div>
+        <div class="kpi-label">Females</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col4:
+    st.markdown(f"""
+    <div class="kpi-card">
+        <div class="kpi-icon">♿</div>
+        <div class="kpi-value">{disability_count:,}</div>
+        <div class="kpi-label">Disabilities</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# -------------------- FILTER SECTION --------------------
+st.markdown('<div class="section-header">Select state to filter</div>', unsafe_allow_html=True)
+
+col_filter, col_search = st.columns([1, 2], gap="large")
+
+with col_filter:
+    agg = df.groupby(["ExamYear", "State"]).size().reset_index(name="NumberOfCandidates")
+    states = sorted(agg["State"].unique())
+    selected_state = st.selectbox("", ["All states"] + states, key="state_filter", label_visibility="collapsed")
+
+with col_search:
+    st.text_input("🔍 Search reports, activities, or data...", key="search_box", label_visibility="collapsed")
+
+# -------------------- QUICK INSIGHTS --------------------
+st.markdown('<div class="section-header">Quick insights</div>', unsafe_allow_html=True)
+
+col_chart1, col_chart2 = st.columns(2, gap="large")
+
+# Candidates per Year Chart
+with col_chart1:
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.markdown('<div class="chart-title">Candidates per year</div>', unsafe_allow_html=True)
+    
+    yearly = df.groupby("ExamYear").size().reset_index(name="Count")
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=yearly["ExamYear"],
+        y=yearly["Count"],
+        marker_color='#1e293b',
+        marker_line_color='#1e293b',
+        marker_line_width=1.5,
+        opacity=1
+    ))
+    
+    fig.update_layout(
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        margin=dict(l=20, r=20, t=20, b=40),
+        height=300,
+        xaxis=dict(
+            title="Exam year",
+            showgrid=False,
+            showline=True,
+            linecolor='#e9ecef',
+            title_font=dict(size=12, color='#6c757d')
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='#f1f3f5',
+            showline=False,
+            title=None
+        ),
+        font=dict(family="Arial, sans-serif", size=12, color="#1a1a1a"),
+        bargap=0.3
+    )
+    
+    st.plotly_chart(fig, use_container_width=True, key="yearly_chart")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Gender Distribution Chart
+with col_chart2:
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.markdown('<div class="chart-title">Male Vs Female</div>', unsafe_allow_html=True)
+    
+    gender = df["Sex"].value_counts().reset_index()
+    gender.columns = ["Sex", "Count"]
+    
+    # Calculate percentages
+    total = gender["Count"].sum()
+    gender["Percentage"] = (gender["Count"] / total * 100).round(0).astype(int)
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=gender["Sex"],
+        values=gender["Count"],
+        hole=0.6,
+        marker=dict(colors=['#1e293b', '#e2e8f0']),
+        textposition='outside',
+        texttemplate='%{percent}',
+        hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>',
+        showlegend=True
+    )])
+    
+    fig.update_layout(
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        margin=dict(l=20, r=20, t=20, b=20),
+        height=300,
+        font=dict(family="Arial, sans-serif", size=12, color="#1a1a1a"),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.2,
+            xanchor="center",
+            x=0.5
+        )
+    )
+    
+    st.plotly_chart(fig, use_container_width=True, key="gender_chart")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# -------------------- TOP EXAM CENTRES --------------------
+st.markdown('<div class="section-header">Top Exam Centres</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+
+top_centres = (
+    df.groupby(["Centre", "State"])
+    .size()
+    .reset_index(name="Registered Candidates")
+    .sort_values("Registered Candidates", ascending=False)
+    .head(5)
+    .reset_index(drop=True)
+)
+
+# Display as styled table
+st.dataframe(
+    top_centres,
+    use_container_width=True,
+    hide_index=False,
+    column_config={
+        "Centre": st.column_config.TextColumn("Centre", width="large"),
+        "State": st.column_config.TextColumn("State", width="medium"),
+        "Registered Candidates": st.column_config.TextColumn("Registered Candidates", width="medium")
+    }
+)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# -------------------- BOTTOM SECTION --------------------
+col_activity, col_actions = st.columns([1.5, 1], gap="large")
+
+# Recent Activity
+with col_activity:
+    st.markdown('<div class="section-header">Recent Activity</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color: #6c757d; margin-bottom: 1rem;">Your latest report activities</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="activity-card">', unsafe_allow_html=True)
+    
+    for i in range(4):
+        st.markdown(f"""
+        <div class="activity-item">
+            <div class="activity-icon">⏱️</div>
+            <div>
+                <div class="activity-title">Generate Report</div>
+                <div class="activity-desc">Create new analytics report</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if st.button("View All →", key="view_all_activity"):
+        st.info("View all activities feature coming soon!")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Quick Actions
+with col_actions:
+    st.markdown('<div class="section-header">Quick Actions</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color: #6c757d; margin-bottom: 1rem;">Frequently used features</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="activity-card">', unsafe_allow_html=True)
+    
+    actions = [
+        ("📊", "Generate Report", "Create new analytics report"),
+        ("💾", "Saved Reports", "Access your saved reports"),
+        ("🧾", "View Invoices", "Check payment history"),
+        ("💳", "Payment methods", "Manage your payments")
+    ]
+    
+    for icon, title, desc in actions:
+        if st.button(f"{icon} {title}", key=f"action_{title}", use_container_width=True):
+            if "Generate Report" in title:
+                st.switch_page("pages/Create_Report.py")
+            else:
+                st.info(f"{title} feature coming soon!")
+        st.markdown('<div style="height: 0.5rem;"></div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
