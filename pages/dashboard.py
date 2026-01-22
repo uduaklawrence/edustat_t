@@ -370,6 +370,9 @@ top_centres = (
     .reset_index(drop=True)
 )
 
+# Adjust index to start from 1
+top_centres.index = top_centres.index + 1
+
 # Display as styled table
 st.dataframe(
     top_centres,
