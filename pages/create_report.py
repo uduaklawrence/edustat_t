@@ -1,19 +1,23 @@
 import streamlit as st
 import json
 from datetime import datetime
+import sys
+from pathlib import Path
 from db_queries import (
     fetch_data,
     create_invoice_record,
 )
 from redis_cache import get_or_set_distinct_values
 
-# ------------------ SETTINGS ------------------
-SUBSCRIPTION_AMOUNT = 20000.00  # ₦
+# Add parent directory to path to import auth_utils
+sys.path.append(str(Path(__file__).parent.parent))
+from auth_utils import require_authentication, logout_user
 
-# ------------------ AUTH CHECK ------------------
-if not st.session_state.get("logged_in", False):
-    st.warning("Please sign in to view the report.")
-    st.stop()
+# -------------------- AUTH CHECK --------------------
+require_authentication()
+
+# ------------------ SETTINGS ------------------
+SUBSCRIPTION_AMOUNT = 20000.00  # 
 
 st.set_page_config(page_title="Create Report", layout="wide")
 

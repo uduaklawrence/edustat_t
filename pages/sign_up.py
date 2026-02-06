@@ -5,8 +5,22 @@ import bcrypt
 import pandas as pd
 from db_connection import create_connection
 from sqlalchemy import text
+from session_manager import create_session
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import auth_utils
+sys.path.append(str(Path(__file__).parent.parent))
+from auth_utils import check_authentication, login_user
 
 st.set_page_config(page_title="Sign Up - Edustat", layout="wide")
+
+# Check if already logged in
+if check_authentication():
+    st.info("You're already logged in!")
+    if st.button("Go to Dashboard"):
+        st.switch_page("pages/dashboard.py")
+    st.stop()
 
 # -------------------- CUSTOM CSS --------------------
 st.markdown("""
@@ -198,7 +212,7 @@ with col2:
     # --- Input Fields ---
     name = st.text_input("Full Name", placeholder="Enter your full name", key="name_input")
     username = st.text_input("Username", placeholder="Enter your username", key="username_input")
-    phone_number = st.text_input("Phone Number", placeholder="Firstname", key="phone_input")
+    phone_number = st.text_input("Phone Number", placeholder="Enter your phone number", key="phone_input")
     email_address = st.text_input("Email Address", placeholder="Enter your email address", key="email_input")
     password = st.text_input("Password", type="password", placeholder="Enter your password", key="password_input")
     confirm_password = st.text_input("Confirm password", type="password", placeholder="Confirm your password", key="confirm_input")
@@ -253,7 +267,7 @@ with col2:
                         VALUES (:username, :name, :phone, :email, :password)
                     """)
                     with engine.begin() as conn:
-                        conn.execute(
+                        result =conn.execute(
                             insert_query,
                             {
                                 "username": username_val,
