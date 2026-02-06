@@ -1,3 +1,4 @@
+# pages/Login.py
 import streamlit as st
 import re
 import bcrypt
@@ -5,14 +6,20 @@ import pandas as pd
 from db_connection import create_connection
 from streamlit_local_storage import LocalStorage
 from session_manager import create_session, validate_session
+import sys
+from pathlib import Path
+ 
+# Add parent directory to path to import auth_utils
+sys.path.append(str(Path(__file__).parent.parent))
+from auth_utils import check_authentication, login_user, get_cookie_manager
  
 st.set_page_config(page_title="Login - Edustat", layout="wide")
  
-# Initialize localStorage
-storage = LocalStorage()
- 
-# --- Check for Existing Session Token ---
-token = storage.getItem("session_token")
+# --- Check for Existing Session (Cookie-based) ---
+if check_authentication():
+    st.success("Already logged in! Redirecting to dashboard...")
+    st.switch_page("pages/dashboard.py")
+    st.stop()
  
 # Uncomment when session validation is ready
 # if token and token not in ["", "null", "undefined"]:
@@ -258,8 +265,6 @@ st.markdown("""
 # Initialize session state for forgot password
 if 'forgot_clicked' not in st.session_state:
     st.session_state.forgot_clicked = False
-if 'show_signup_link' not in st.session_state:
-    st.session_state.show_signup_link = False
  
 # -------------------- HEADER / NAVIGATION --------------------
 st.markdown("""
@@ -333,18 +338,21 @@ with col2:
                         if bcrypt.checkpw(password_val.encode('utf-8'), hashed_pass):
                             # Get user_id from DB
                             user_id = int(user_df['user_id'].values[0])
+                            username = user_df['username'].values[0]
+                            name = user_df.get('name', {}).values[0] if 'name' in user_df.columns else username
  
                             # Create session in DB
                             session_token = create_session(user_id)
  
-                            # Save session info
-                            st.session_state.logged_in = True
-                            st.session_state.user_id = user_id
-                            st.session_state.user_email = email_val
-                            st.session_state.session_token = session_token
+                            # Login user using cookie system (this sets both cookies AND session_state)
+                            login_user(
+                                username=username,
+                                user_email=email_val,
+                                user_id=str(user_id)
+                            )
  
-                            # Save token to browser localStorage
-                            storage.setItem("session_token", session_token)
+                            # Also store session_token for your existing session system
+                            st.session_state.session_token = session_token
  
                             st.success("✅ Login successful! Redirecting to dashboard...")
                             st.switch_page("pages/dashboard.py")
