@@ -288,7 +288,9 @@ col_chart1, col_chart2 = st.columns(2, gap="large")
 with col_chart1:
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">Candidates per year</div>', unsafe_allow_html=True)
-    
+
+    df['ExamYear'] = df['ExamYear'].astype(int)
+
     yearly = df.groupby("ExamYear").size().reset_index(name="Count")
     
     fig = go.Figure()
@@ -311,7 +313,9 @@ with col_chart1:
             showgrid=False,
             showline=True,
             linecolor='#e9ecef',
-            title_font=dict(size=12, color='#6c757d')
+            title_font=dict(size=12, color='#6c757d'),
+            tickmode='array',
+            tickvals=yearly["ExamYear"]
         ),
         yaxis=dict(
             showgrid=True,
