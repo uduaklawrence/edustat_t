@@ -1,5 +1,5 @@
 # ==============================
-# 📄 VIEW INVOICE - PAGE 2
+# 📄 VIEW INVOICE - WITH FAILED STATUS
 # ==============================
 
 import streamlit as st
@@ -12,6 +12,7 @@ from db_queries import (
     update_payment_status,
     attach_paystack_ref_to_invoice,
     mark_invoice_paid_by_paystack_ref,
+    mark_invoice_failed,  # NEW: Add this function to db_queries
     save_user_report,
 )
 from paystack import initialize_transaction, verify_transaction
@@ -49,11 +50,65 @@ saved_group = st.session_state.get("saved_group")
 saved_columns = st.session_state.get("saved_columns", [])
 saved_description = st.session_state.get("saved_description", "Custom Report")
 payment_verified = st.session_state.get("payment_verified", False)
+payment_failed = st.session_state.get("payment_failed", False)  # NEW
 
 # ============================================================
-# DISPLAY PENDING INVOICE (if not paid)
+# DISPLAY FAILED INVOICE (if payment failed)
 # ============================================================
-if not payment_verified:
+if payment_failed:
+    st.error("❌ Payment Failed")
+    
+    st.markdown("""
+    ### Payment Unsuccessful
+    
+    Your payment attempt for invoice **{invoice_ref}** was not successful. This could be due to:
+    
+    - Insufficient funds
+    - Payment gateway timeout
+    - Network connectivity issues
+    - Card declined by bank
+    - Transaction cancelled
+    
+    **What you can do:**
+    
+    1. **Retry Payment**: Try making the payment again
+    2. **Use Different Payment Method**: Try another card or payment option
+    3. **Contact Support**: If the issue persists, reach out to our support team
+    """)
+    
+    # Display invoice details
+    st.subheader("📄 Invoice Details")
+    st.markdown(f"""
+    - **Invoice No:** {invoice_ref}
+    - **Amount:** ₦{SUBSCRIPTION_AMOUNT:,.2f}
+    - **Report Type:** {saved_group}
+    - **Status:** FAILED ❌
+    """)
+    
+    # Action buttons
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔄 Retry Payment", type="primary", use_container_width=True):
+            # Reset payment status
+            st.session_state.payment_failed = False
+            st.session_state.paystack_reference = None
+            st.rerun()
+    
+    with col2:
+        if st.button("📧 Contact Support", use_container_width=True):
+            st.info("📧 Email: support@edustat.com | 📞 Phone: +234-XXX-XXX-XXXX")
+    
+    st.markdown("---")
+    if st.button("← Create New Report"):
+        st.switch_page("pages/create_report.py")
+    
+    st.stop()  # Stop execution here if payment failed
+
+# ============================================================
+# DISPLAY PENDING INVOICE (if not paid and not failed)
+# ============================================================
+if not payment_verified and not payment_failed:
     st.subheader("📄 Pending Invoice")
     
     # Generate pending invoice PDF
@@ -186,19 +241,29 @@ if not payment_verified:
                         and verification_response.get("status") is True
                         and verification_response.get("data", {}).get("status") == "success"
                     ):
-                        # Update payment status in users table
+                        # Payment SUCCESS
                         update_payment_status(user_email)
                         st.session_state.payment_verified = True
-                        
-                        # Mark invoice as PAID
                         mark_invoice_paid_by_paystack_ref(paystack_ref)
-                        
                         st.success("✅ Payment verified successfully!")
                         st.rerun()
+                        
+                    elif (
+                        verification_response
+                        and verification_response.get("data", {}).get("status") == "failed"
+                    ):
+                        # Payment FAILED
+                        st.session_state.payment_failed = True
+                        mark_invoice_failed(invoice_ref)  # NEW: Mark invoice as failed
+                        st.rerun()
+                        
                     else:
-                        st.error("❌ Payment verification failed. Please contact support if payment was deducted.")
+                        # Payment PENDING or ABANDONED
+                        st.warning("⚠️ Payment is still pending. Please try again in a few moments.")
+                        
                 except Exception as e:
                     st.error(f"Verification error: {str(e)}")
+
 
 # ============================================================
 # DISPLAY PAID INVOICE + SAVE REPORT

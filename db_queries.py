@@ -166,7 +166,32 @@ def mark_invoice_paid_by_paystack_ref(paystack_ref):
     except Exception as e:
         st.error(f"Failed to mark invoice paid: {e}")
  
- 
+def mark_invoice_failed(invoice_ref):
+    """Mark an invoice as FAILED in the database."""
+    engine = create_connection()
+    if engine is None:
+        return False
+
+    query = text("""
+        UPDATE invoices
+        SET invoice_data =
+            CASE
+                WHEN invoice_data IS NULL THEN JSON_OBJECT('status', 'FAILED', 'failed_at', NOW())
+                ELSE JSON_SET(invoice_data, '$.status', 'FAILED', '$.failed_at', NOW())
+            END,
+            updated_at = NOW()
+        WHERE ref = :invoice_ref
+    """)
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(query, {"invoice_ref": invoice_ref})
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Failed to mark invoice as failed: {e}")
+        return False
+     
 def update_invoice_pdf_path(invoice_ref, pdf_path):
     """Update the PDF path for a specific invoice."""
     engine = create_connection()
