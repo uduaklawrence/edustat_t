@@ -3,12 +3,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 from Analytics_layer import get_exam_dataset
 import pandas as pd
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import auth_utils
+sys.path.append(str(Path(__file__).parent.parent))
+from auth_utils import require_authentication, logout_user
 
 # -------------------- AUTH CHECK --------------------
-if not st.session_state.get('logged_in', False):
-    st.warning("Please sign in to view the dashboard.")
-    st.switch_page("pages/Login.py")
-    st.stop()
+require_authentication()
 
 # -------------------- PAGE CONFIG --------------------
 st.set_page_config(page_title="Edustat WAEC Dashboard", layout="wide", initial_sidebar_state="collapsed")
@@ -19,7 +22,8 @@ st.markdown("""
     /* Main container styling */
     .main {
         padding: 2rem 3rem;
-        background-color: #f8f9fa;
+        background-color: #ffffff;
+            border:2px solid white;
     }
     
     /* Header styling */
@@ -198,14 +202,21 @@ df = load_dataset()
 # -------------------- HEADER --------------------
 col_header, col_logout = st.columns([6, 1])
 with col_header:
-    username = st.session_state.get('user_email', 'User').split('@')[0].title()
+    # Get username from session_state (set by cookie authentication)
+    username = st.session_state.get('username', 'User')
+    user_email = st.session_state.get('user_email', '')
+
+    # Use email as fallback if username is not available
+    if not username and user_email:
+        username = user_email.split('@')[0].title()
+        
     st.markdown(f'<div class="welcome-header">Welcome back, {username}</div>', unsafe_allow_html=True)
     st.markdown('<div class="subtitle">Here\'s your educational analytics overview</div>', unsafe_allow_html=True)
 
 with col_logout:
     if st.button("🔓 Logout", key="logout_btn"):
-        st.session_state.logged_in = False
-        st.session_state.user_email = None
+        # Use the logout_user function from auth_utils
+        logout_user()
         st.success("You have been logged out.")
         st.switch_page("pages/Landing.py")
 
@@ -277,7 +288,9 @@ col_chart1, col_chart2 = st.columns(2, gap="large")
 with col_chart1:
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">Candidates per year</div>', unsafe_allow_html=True)
-    
+
+    df['ExamYear'] = df['ExamYear'].astype(int)
+
     yearly = df.groupby("ExamYear").size().reset_index(name="Count")
     
     fig = go.Figure()
@@ -300,7 +313,9 @@ with col_chart1:
             showgrid=False,
             showline=True,
             linecolor='#e9ecef',
-            title_font=dict(size=12, color='#6c757d')
+            title_font=dict(size=12, color='#6c757d'),
+            tickmode='array',
+            tickvals=yearly["ExamYear"]
         ),
         yaxis=dict(
             showgrid=True,
