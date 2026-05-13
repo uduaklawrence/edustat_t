@@ -7,157 +7,208 @@ st.set_page_config(page_title="My Reports", layout="wide")
 # Load your existing CSS
 with open('styles.css') as f:
     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
-# Additional CSS for the reports table (complements your existing styles.css)
+ 
 st.markdown("""
 <style>
-    /* Reports page specific styles */
     .reports-container {
-        background: var(--card-white);
-        border-radius: 12px;
-        padding: 24px;
+        background: var(--card-white, white);
+        border-radius: 12px; padding: 24px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        border: 1px solid var(--border-light);
+        border: 1px solid var(--border-light, #e2e8f0);
     }
-    
-    .reports-header {
-        margin-bottom: 32px;
-    }
-    
+    .reports-header { margin-bottom: 32px; }
     .reports-title {
-        font-size: 32px;
-        font-weight: 700;
-        color: var(--text-primary);
-        margin-bottom: 8px;
+        font-size: 32px; font-weight: 700;
+        color: var(--text-primary, #1a1a1a); margin-bottom: 8px;
     }
-    
-    .reports-subtitle {
-        font-size: 16px;
-        color: var(--text-secondary);
-    }
-    
-    .search-filter-row {
-        margin-bottom: 32px;
-    }
-    
-    /* Table styling using your design system */
+    .reports-subtitle { font-size: 16px; color: var(--text-secondary, #64748b); }
     .reports-table-header {
-        background-color: var(--background-gray);
-        padding: 16px;
-        font-weight: 600;
-        color: var(--text-secondary);
-        font-size: 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        border-bottom: 2px solid var(--border-light);
+        background-color: var(--background-gray, #f8fafc);
+        padding: 16px; font-weight: 600;
+        color: var(--text-secondary, #64748b); font-size: 14px;
+        text-transform: uppercase; letter-spacing: 0.05em;
+        border-bottom: 2px solid var(--border-light, #e2e8f0);
     }
-    
-    .reports-table-row {
-        padding: 16px;
-        border-bottom: 1px solid var(--border-light);
-        transition: background-color 0.2s;
-        display: flex;
-        align-items: center;
-    }
-    
-    .reports-table-row:hover {
-        background-color: var(--background-gray);
-    }
-    
-    .report-name-link {
-        color: var(--accent-blue);
-        text-decoration: none;
-        font-weight: 500;
-        cursor: pointer;
-    }
-    
-    .report-name-link:hover {
-        color: var(--primary-blue);
-        text-decoration: underline;
-    }
-    
-    /* Expiry badge */
     .expiry-badge {
-        display: inline-block;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 14px;
-        font-weight: 600;
+        display: inline-block; padding: 6px 12px;
+        border-radius: 20px; font-size: 14px; font-weight: 600;
     }
-    
-    .expiry-normal {
-        background-color: #dbeafe;
-        color: #1e40af;
-    }
-    
-    .expiry-warning {
-        background-color: #fef3c7;
-        color: #92400e;
-    }
-    
-    /* Action buttons */
-    .action-buttons {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-    }
-    
-    div[data-testid="stButton"] button.action-btn {
-        background: transparent !important;
-        border: 1px solid var(--border-light) !important;
-        padding: 8px 12px !important;
-        border-radius: 6px !important;
-        color: var(--text-secondary) !important;
-        font-size: 18px !important;
-        transition: all 0.2s ease !important;
-        min-width: 40px !important;
-        height: 40px !important;
-    }
-    
-    div[data-testid="stButton"] button.action-btn:hover {
-        background: var(--background-gray) !important;
-        border-color: var(--primary-blue) !important;
-        color: var(--primary-blue) !important;
-    }
-    
-    div[data-testid="stButton"] button.report-name-btn {
-        background: transparent !important;
-        border: none !important;
-        color: var(--accent-blue) !important;
-        font-weight: 500 !important;
-        text-align: left !important;
-        padding: 0 !important;
-        transition: color 0.2s ease !important;
-    }
-    
-    div[data-testid="stButton"] button.report-name-btn:hover {
-        color: var(--primary-blue) !important;
-        text-decoration: underline !important;
-    }
-    
-    /* Search input styling */
-    .stTextInput input {
-        border-radius: 8px !important;
-        border: 2px solid var(--border-light) !important;
-        padding: 12px 16px !important;
-        font-size: 15px !important;
-    }
-    
-    .stTextInput input:focus {
-        border-color: var(--primary-blue) !important;
-    }
-    
-    .stSelectbox select {
-        border-radius: 8px !important;
-        border: 2px solid var(--border-light) !important;
-        padding: 12px 16px !important;
-    }
-    
-    .stSelectbox select:focus {
-        border-color: var(--primary-blue) !important;
-    }
+    .expiry-normal  { background-color: #dbeafe; color: #1e40af; }
+    .expiry-warning { background-color: #fef3c7; color: #92400e; }
+    .expiry-expired { background-color: #fee2e2; color: #991b1b; }
 </style>
 """, unsafe_allow_html=True)
+ 
+st.markdown("""
+<div class="reports-header">
+    <div class="reports-title">Saved Reports</div>
+    <div class="reports-subtitle">Access and manage your previously generated reports</div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ── AUTH CHECK ────────────────────────────────────────────────────────────────
+if not st.session_state.get("logged_in", False):
+    st.warning("Please log in to view your reports.")
+    st.stop()
+ 
+user_id = st.session_state.get("user_id")
+ 
+
+
+# with open('styles.css') as f:
+#     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+# # Additional CSS for the reports table (complements your existing styles.css)
+# st.markdown("""
+# <style>
+#     /* Reports page specific styles */
+#     .reports-container {
+#         background: var(--card-white);
+#         border-radius: 12px;
+#         padding: 24px;
+#         box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+#         border: 1px solid var(--border-light);
+#     }
+    
+#     .reports-header {
+#         margin-bottom: 32px;
+#     }
+    
+#     .reports-title {
+#         font-size: 32px;
+#         font-weight: 700;
+#         color: var(--text-primary);
+#         margin-bottom: 8px;
+#     }
+    
+#     .reports-subtitle {
+#         font-size: 16px;
+#         color: var(--text-secondary);
+#     }
+    
+#     .search-filter-row {
+#         margin-bottom: 32px;
+#     }
+    
+#     /* Table styling using your design system */
+#     .reports-table-header {
+#         background-color: var(--background-gray);
+#         padding: 16px;
+#         font-weight: 600;
+#         color: var(--text-secondary);
+#         font-size: 14px;
+#         text-transform: uppercase;
+#         letter-spacing: 0.05em;
+#         border-bottom: 2px solid var(--border-light);
+#     }
+    
+#     .reports-table-row {
+#         padding: 16px;
+#         border-bottom: 1px solid var(--border-light);
+#         transition: background-color 0.2s;
+#         display: flex;
+#         align-items: center;
+#     }
+    
+#     .reports-table-row:hover {
+#         background-color: var(--background-gray);
+#     }
+    
+#     .report-name-link {
+#         color: var(--accent-blue);
+#         text-decoration: none;
+#         font-weight: 500;
+#         cursor: pointer;
+#     }
+    
+#     .report-name-link:hover {
+#         color: var(--primary-blue);
+#         text-decoration: underline;
+#     }
+    
+#     /* Expiry badge */
+#     .expiry-badge {
+#         display: inline-block;
+#         padding: 6px 12px;
+#         border-radius: 20px;
+#         font-size: 14px;
+#         font-weight: 600;
+#     }
+    
+#     .expiry-normal {
+#         background-color: #dbeafe;
+#         color: #1e40af;
+#     }
+    
+#     .expiry-warning {
+#         background-color: #fef3c7;
+#         color: #92400e;
+#     }
+    
+#     /* Action buttons */
+#     .action-buttons {
+#         display: flex;
+#         gap: 8px;
+#         align-items: center;
+#     }
+    
+#     div[data-testid="stButton"] button.action-btn {
+#         background: transparent !important;
+#         border: 1px solid var(--border-light) !important;
+#         padding: 8px 12px !important;
+#         border-radius: 6px !important;
+#         color: var(--text-secondary) !important;
+#         font-size: 18px !important;
+#         transition: all 0.2s ease !important;
+#         min-width: 40px !important;
+#         height: 40px !important;
+#     }
+    
+#     div[data-testid="stButton"] button.action-btn:hover {
+#         background: var(--background-gray) !important;
+#         border-color: var(--primary-blue) !important;
+#         color: var(--primary-blue) !important;
+#     }
+    
+#     div[data-testid="stButton"] button.report-name-btn {
+#         background: transparent !important;
+#         border: none !important;
+#         color: var(--accent-blue) !important;
+#         font-weight: 500 !important;
+#         text-align: left !important;
+#         padding: 0 !important;
+#         transition: color 0.2s ease !important;
+#     }
+    
+#     div[data-testid="stButton"] button.report-name-btn:hover {
+#         color: var(--primary-blue) !important;
+#         text-decoration: underline !important;
+#     }
+    
+#     /* Search input styling */
+#     .stTextInput input {
+#         border-radius: 8px !important;
+#         border: 2px solid var(--border-light) !important;
+#         padding: 12px 16px !important;
+#         font-size: 15px !important;
+#     }
+    
+#     .stTextInput input:focus {
+#         border-color: var(--primary-blue) !important;
+#     }
+    
+#     .stSelectbox select {
+#         border-radius: 8px !important;
+#         border: 2px solid var(--border-light) !important;
+#         padding: 12px 16px !important;
+#     }
+    
+#     .stSelectbox select:focus {
+#         border-color: var(--primary-blue) !important;
+#     }
+# </style>
+# """, unsafe_allow_html=True)
 
 # Page header
 st.markdown("""
@@ -167,117 +218,297 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Ensure user is logged in
-if not st.session_state.get("logged_in", False):
-    st.warning("Please log in to view your reports.")
-    st.stop()
+# # Ensure user is logged in
+# if not st.session_state.get("logged_in", False):
+#     st.warning("Please log in to view your reports.")
+#     st.stop()
 
-user_id = st.session_state.get("user_id")
+# user_id = st.session_state.get("user_id")
 
-# Fetch reports
+# # Fetch reports
+# reports = fetch_user_reports(user_id)
+# reports = reports.reset_index(drop=True)
+# reports.index = reports.index + 1
+
+# # Search and filter section
+# col1, col2 = st.columns([3, 1])
+
+# with col1:
+#     search_query = st.text_input("", placeholder="🔍 Search saved reports...", label_visibility="collapsed")
+
+# with col2:
+#     categories = ["All Categories"] + (reports["report_group"].unique().tolist() if not reports.empty else [])
+#     selected_category = st.selectbox("", categories, label_visibility="collapsed")
+
+# st.markdown("<br>", unsafe_allow_html=True)
+
+# if reports.empty:
+#     st.info("You have no saved reports in the last 30 days.")
+#     st.stop()
+
+# # Filter reports based on search and category
+# filtered_reports = reports.copy()
+
+# if search_query:
+#     filtered_reports = filtered_reports[
+#         filtered_reports["report_name"].str.contains(search_query, case=False, na=False)
+#     ]
+
+# if selected_category != "All Categories":
+#     filtered_reports = filtered_reports[filtered_reports["report_group"] == selected_category]
+
+# # Create table within a container
+# st.markdown('<div class="reports-container">', unsafe_allow_html=True)
+
+# # Table header
+# header_cols = st.columns([1, 1.5, 2.5, 1.5, 1.5, 1.5])
+# headers = ["Report ID", "Report Type", "Report Name", "Date Created", "Expiry Date", "Actions"]
+
+# for col, header in zip(header_cols, headers):
+#     with col:
+#         st.markdown(f'<div class="reports-table-header">{header}</div>', unsafe_allow_html=True)
+
+# # Data rows
+# for idx, row in filtered_reports.iterrows():
+#     row_cols = st.columns([1, 1.5, 2.5, 1.5, 1.5, 1.5])
+    
+#     with row_cols[0]:
+#         st.markdown(f'<div style="padding: 16px; color: var(--text-secondary); font-family: monospace;">{row["report_id"]}</div>', unsafe_allow_html=True)
+    
+#     with row_cols[1]:
+#         st.markdown(f'<div style="padding: 16px; color: var(--text-primary);">{row["report_group"]}</div>', unsafe_allow_html=True)
+    
+#     with row_cols[2]:
+#         # Clickable report name using your button style
+#         if st.button(row["report_name"], key=f"name_{row['report_id']}", type="secondary"):
+#             st.session_state.selected_report_id = int(row["report_id"])
+#             st.switch_page("pages/view_report.py")
+    
+#     with row_cols[3]:
+#         # Format date
+#         date_created = pd.to_datetime(row["created_at"]).strftime("%d/%m/%Y") if pd.notna(row["created_at"]) else "N/A"
+#         st.markdown(f'<div style="padding: 16px; color: var(--text-primary);">{date_created}</div>', unsafe_allow_html=True)
+    
+#     with row_cols[4]:
+#         # Calculate days left
+#         if pd.notna(row["expires_at"]):
+#             expires_at = pd.to_datetime(row["expires_at"])
+#             days_left = (expires_at - pd.Timestamp.now()).days
+#             badge_class = "expiry-warning" if days_left < 7 else "expiry-normal"
+#             st.markdown(f'<div style="padding: 16px;"><span class="expiry-badge {badge_class}">{days_left} days left</span></div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div style="padding: 16px; color: var(--text-secondary);">N/A</div>', unsafe_allow_html=True)
+    
+#     with row_cols[5]:
+#         # Action buttons
+#         action_cols = st.columns(3)
+        
+#         with action_cols[0]:
+#             if st.button("👁️", key=f"view_{row['report_id']}", help="View report"):
+#                 st.session_state.selected_report_id = int(row["report_id"])
+#                 st.switch_page("pages/view_report.py")
+        
+#         with action_cols[1]:
+#             if st.button("⬇️", key=f"download_{row['report_id']}", help="Download report"):
+#                 # Implement download logic
+#                 st.toast(f"Downloading {row['report_name']}...")
+        
+#         with action_cols[2]:
+#             if st.button("🗑️", key=f"delete_{row['report_id']}", help="Delete report"):
+#                 # Implement delete logic with confirmation
+#                 if st.session_state.get(f"confirm_delete_{row['report_id']}", False):
+#                     # Add your delete query here
+#                     # delete_report(row['report_id'])
+#                     st.success(f"Deleted {row['report_name']}")
+#                     st.rerun()
+#                 else:
+#                     st.session_state[f"confirm_delete_{row['report_id']}"] = True
+#                     st.warning("Click again to confirm deletion")
+    
+#     st.markdown("<hr style='margin: 0; border: none; border-bottom: 1px solid var(--border-light);'>", unsafe_allow_html=True)
+
+# st.markdown('</div>', unsafe_allow_html=True)
+
+# # Show message if no results after filtering
+# if filtered_reports.empty:
+#     st.info("No reports found matching your search criteria.")
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+def open_saved_report(report_id: int):
+    # Mark as payment verified — report is already paid, it's in saved reports
+    st.session_state.payment_verified   = True
+    st.session_state.logged_in          = True
+ 
+    # Clear stale session data so view_report.py loads fresh from DB
+    st.session_state.report_cart        = []          # must be empty so DB loader runs
+    st.session_state.selected_report_id = report_id
+    st.session_state.pdf_images         = {}          # clear old chart images
+ 
+    # Navigate to view_report
+    st.switch_page("pages/view_report.py")
+ 
+ 
+# ── FETCH REPORTS ─────────────────────────────────────────────────────────────
 reports = fetch_user_reports(user_id)
+ 
+if reports.empty:
+    st.info("📭 You have no saved reports in the last 30 days.")
+    if st.button("➕ Create a Report", type="primary"):
+        st.switch_page("pages/create_report.py")
+    st.stop()
+ 
 reports = reports.reset_index(drop=True)
 reports.index = reports.index + 1
-
-# Search and filter section
+ 
+# ── SEARCH & FILTER ───────────────────────────────────────────────────────────
 col1, col2 = st.columns([3, 1])
-
 with col1:
-    search_query = st.text_input("", placeholder="🔍 Search saved reports...", label_visibility="collapsed")
-
+    search_query = st.text_input(
+        "", placeholder="🔍 Search saved reports...", label_visibility="collapsed"
+    )
 with col2:
-    categories = ["All Categories"] + (reports["report_group"].unique().tolist() if not reports.empty else [])
+    categories        = ["All Categories"] + reports["report_group"].unique().tolist()
     selected_category = st.selectbox("", categories, label_visibility="collapsed")
-
+ 
 st.markdown("<br>", unsafe_allow_html=True)
-
-if reports.empty:
-    st.info("You have no saved reports in the last 30 days.")
-    st.stop()
-
-# Filter reports based on search and category
+ 
 filtered_reports = reports.copy()
-
 if search_query:
     filtered_reports = filtered_reports[
         filtered_reports["report_name"].str.contains(search_query, case=False, na=False)
     ]
-
 if selected_category != "All Categories":
-    filtered_reports = filtered_reports[filtered_reports["report_group"] == selected_category]
-
-# Create table within a container
-st.markdown('<div class="reports-container">', unsafe_allow_html=True)
-
-# Table header
-header_cols = st.columns([1, 1.5, 2.5, 1.5, 1.5, 1.5])
-headers = ["Report ID", "Report Type", "Report Name", "Date Created", "Expiry Date", "Actions"]
-
-for col, header in zip(header_cols, headers):
-    with col:
-        st.markdown(f'<div class="reports-table-header">{header}</div>', unsafe_allow_html=True)
-
-# Data rows
-for idx, row in filtered_reports.iterrows():
-    row_cols = st.columns([1, 1.5, 2.5, 1.5, 1.5, 1.5])
-    
-    with row_cols[0]:
-        st.markdown(f'<div style="padding: 16px; color: var(--text-secondary); font-family: monospace;">{row["report_id"]}</div>', unsafe_allow_html=True)
-    
-    with row_cols[1]:
-        st.markdown(f'<div style="padding: 16px; color: var(--text-primary);">{row["report_group"]}</div>', unsafe_allow_html=True)
-    
-    with row_cols[2]:
-        # Clickable report name using your button style
-        if st.button(row["report_name"], key=f"name_{row['report_id']}", type="secondary"):
-            st.session_state.selected_report_id = int(row["report_id"])
-            st.switch_page("pages/view_report.py")
-    
-    with row_cols[3]:
-        # Format date
-        date_created = pd.to_datetime(row["created_at"]).strftime("%d/%m/%Y") if pd.notna(row["created_at"]) else "N/A"
-        st.markdown(f'<div style="padding: 16px; color: var(--text-primary);">{date_created}</div>', unsafe_allow_html=True)
-    
-    with row_cols[4]:
-        # Calculate days left
-        if pd.notna(row["expires_at"]):
-            expires_at = pd.to_datetime(row["expires_at"])
-            days_left = (expires_at - pd.Timestamp.now()).days
-            badge_class = "expiry-warning" if days_left < 7 else "expiry-normal"
-            st.markdown(f'<div style="padding: 16px;"><span class="expiry-badge {badge_class}">{days_left} days left</span></div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div style="padding: 16px; color: var(--text-secondary);">N/A</div>', unsafe_allow_html=True)
-    
-    with row_cols[5]:
-        # Action buttons
-        action_cols = st.columns(3)
-        
-        with action_cols[0]:
-            if st.button("👁️", key=f"view_{row['report_id']}", help="View report"):
-                st.session_state.selected_report_id = int(row["report_id"])
-                st.switch_page("pages/view_report.py")
-        
-        with action_cols[1]:
-            if st.button("⬇️", key=f"download_{row['report_id']}", help="Download report"):
-                # Implement download logic
-                st.toast(f"Downloading {row['report_name']}...")
-        
-        with action_cols[2]:
-            if st.button("🗑️", key=f"delete_{row['report_id']}", help="Delete report"):
-                # Implement delete logic with confirmation
-                if st.session_state.get(f"confirm_delete_{row['report_id']}", False):
-                    # Add your delete query here
-                    # delete_report(row['report_id'])
-                    st.success(f"Deleted {row['report_name']}")
-                    st.rerun()
-                else:
-                    st.session_state[f"confirm_delete_{row['report_id']}"] = True
-                    st.warning("Click again to confirm deletion")
-    
-    st.markdown("<hr style='margin: 0; border: none; border-bottom: 1px solid var(--border-light);'>", unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Show message if no results after filtering
+    filtered_reports = filtered_reports[
+        filtered_reports["report_group"] == selected_category
+    ]
+ 
 if filtered_reports.empty:
     st.info("No reports found matching your search criteria.")
+    st.stop()
+ 
+# ── TABLE ─────────────────────────────────────────────────────────────────────
+st.markdown('<div class="reports-container">', unsafe_allow_html=True)
+ 
+header_cols = st.columns([1, 1.5, 2.5, 1.5, 1.5, 1.5])
+headers     = ["Report ID", "Report Type", "Report Name",
+               "Date Created", "Expiry Date", "Actions"]
+for col, header in zip(header_cols, headers):
+    with col:
+        st.markdown(
+            f'<div class="reports-table-header">{header}</div>',
+            unsafe_allow_html=True,
+        )
+ 
+for _, row in filtered_reports.iterrows():
+    row_cols = st.columns([1, 1.5, 2.5, 1.5, 1.5, 1.5])
+    rid      = int(row["report_id"])
+ 
+    with row_cols[0]:
+        st.markdown(
+            f'<div style="padding:16px;color:var(--text-secondary,#64748b);'
+            f'font-family:monospace;">{rid}</div>',
+            unsafe_allow_html=True,
+        )
+ 
+    with row_cols[1]:
+        st.markdown(
+            f'<div style="padding:16px;color:var(--text-primary,#1a1a1a);">'
+            f'{row["report_group"]}</div>',
+            unsafe_allow_html=True,
+        )
+ 
+    with row_cols[2]:
+        # Clicking the report name opens it directly
+        if st.button(row["report_name"], key=f"name_{rid}", type="secondary"):
+            open_saved_report(rid)
+ 
+    with row_cols[3]:
+        date_created = (
+            pd.to_datetime(row["created_at"]).strftime("%d/%m/%Y")
+            if pd.notna(row["created_at"]) else "N/A"
+        )
+        st.markdown(
+            f'<div style="padding:16px;color:var(--text-primary,#1a1a1a);">'
+            f'{date_created}</div>',
+            unsafe_allow_html=True,
+        )
+ 
+    with row_cols[4]:
+        if pd.notna(row["expires_at"]):
+            expires_at = pd.to_datetime(row["expires_at"])
+            days_left  = (expires_at - pd.Timestamp.now()).days
+            if days_left < 0:
+                badge_class, badge_text = "expiry-expired", "Expired"
+            elif days_left < 7:
+                badge_class, badge_text = "expiry-warning", f"{days_left}d left"
+            else:
+                badge_class, badge_text = "expiry-normal",  f"{days_left} days left"
+            st.markdown(
+                f'<div style="padding:16px;">'
+                f'<span class="expiry-badge {badge_class}">{badge_text}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                '<div style="padding:16px;color:var(--text-secondary,#64748b);">N/A</div>',
+                unsafe_allow_html=True,
+            )
+ 
+    with row_cols[5]:
+        a1, a2, a3 = st.columns(3)
+ 
+        with a1:
+            if st.button("👁️", key=f"view_{rid}", help="View report"):
+                open_saved_report(rid)
+ 
+        with a2:
+            # Download saved PDF if it exists
+            pdf_path = row.get("pdf_path", "")
+            if pdf_path and str(pdf_path) not in ("", "nan", "None"):
+                try:
+                    with open(str(pdf_path), "rb") as pdf_file:
+                        st.download_button(
+                            "⬇️", pdf_file,
+                            file_name=f"Report_{rid}.pdf",
+                            mime="application/pdf",
+                            key=f"dl_{rid}",
+                            help="Download PDF",
+                        )
+                except Exception:
+                    st.markdown(
+                        '<span title="PDF unavailable" style="opacity:0.4;">⬇️</span>',
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.markdown(
+                    '<span title="No PDF" style="opacity:0.4;">⬇️</span>',
+                    unsafe_allow_html=True,
+                )
+ 
+        with a3:
+            if st.button("🗑️", key=f"delete_{rid}", help="Delete report"):
+                if st.session_state.get(f"confirm_delete_{rid}", False):
+                    # from db_queries import delete_user_report
+                    # delete_user_report(rid)
+                    st.success(f"Deleted report {rid}")
+                    st.session_state.pop(f"confirm_delete_{rid}", None)
+                    st.rerun()
+                else:
+                    st.session_state[f"confirm_delete_{rid}"] = True
+                    st.warning("⚠️ Click 🗑️ again to confirm deletion")
+ 
+    st.markdown(
+        "<hr style='margin:0;border:none;border-bottom:1px solid "
+        "var(--border-light,#e2e8f0);'>",
+        unsafe_allow_html=True,
+    )
+ 
+st.markdown('</div>', unsafe_allow_html=True)
+ 
+st.markdown("<br>", unsafe_allow_html=True)
+if st.button("← Back to Dashboard"):
+    st.switch_page("pages/dashboard.py")
