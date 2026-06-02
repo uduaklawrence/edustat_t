@@ -6,6 +6,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import seaborn as sns
 import tempfile
 import os
 from datetime import datetime
@@ -593,37 +595,6 @@ def _layout(**extra):
 # ─────────────────────────────────────────────────────────────────────────────
 # NARRATIVE GENERATOR
 # ─────────────────────────────────────────────────────────────────────────────
-
-def generate_narrative(analysis: str, df: pd.DataFrame, filters: dict) -> str:
-    if df is None or df.empty: return "No data found."
-    
-    # 1. Extract context variables
-    total = int(df["Count"].sum())
-    top_year = df.groupby("ExamYear")["Count"].sum().idxmax() if "ExamYear" in df.columns else "N/A"
-    
-    # 2. Logic for Performance Reports
-    if "Grade" in df.columns:
-        # Calculate Credit Rate (A1-C6)
-        credits = int(df[df["Grade"].isin(CREDIT_GRADES)]["Count"].sum())
-        rate = (credits / total * 100) if total > 0 else 0
-        
-        if "Subject" in analysis:
-            top_subj = df.groupby("Subject")["Count"].sum().idxmax()
-            return f"The **{analysis}** reveals that out of {total:,} results, **{top_subj}** recorded the highest volume. The overall credit attainment rate (A1-C6) stands at **{rate:.1f}%**. Year-on-year data suggests performance peaked in **{top_year}**."
-            
-        if "State" in analysis:
-            top_state = df.groupby("State")["Count"].sum().idxmax()
-            return f"Geographic analysis for **{analysis}** identifies **{top_state}** as the leading territory by volume. System-wide credit success is **{rate:.1f}%**. This suggests a localized concentration of academic excellence."
-
-    # 3. Logic for Demographic Reports
-    if "Sex" in df.columns:
-        male_pct = (df[df["Sex"] == "Male"]["Count"].sum() / total * 100)
-        female_pct = 100 - male_pct
-        bias = "Male" if male_pct > 55 else "Female" if female_pct > 55 else "Balanced"
-        return f"The demographic profile for this report is **{bias}**. Female participation stands at **{female_pct:.1f}%** compared to Male at **{male_pct:.1f}%**. The highest enrollment was recorded in **{top_year}**."
-
-    return f"This {analysis} report summarizes {total:,} records. Key participation was highest in {top_year}."
-
 def generate_narrative(analysis: str, df: pd.DataFrame, filters: dict) -> str:
     if df is None or df.empty:
         return "No data available for the selected filters."
@@ -994,55 +965,46 @@ def generate_narrative(analysis: str, df: pd.DataFrame, filters: dict) -> str:
     # ── EXAM TYPE PERFORMANCE BY STATE ────────────────────────────────────────
     elif analysis == "Exam Type Performance by State":
         if "ExamType" not in df.columns or "State" not in df.columns:
-            return None
-        
-    # 1. Ensure we compute the Credit Rate for BOTH State and ExamType
-    agg = credit_rate(df, ["State", "ExamType"]).sort_values("State")
-    
-    # 2. Use 'color' to segment and 'barmode' to group
-    fig = px.bar(
-        agg, 
-        x="State", 
-        y="CreditRate", 
-        color="ExamType",        # This creates the different colored bars
-        barmode="group",         # This puts them side-by-side (School vs Private)
-        title="Credit Rate by State and Exam Type",
-        labels={"CreditRate": "Credit Rate (%)", "ExamType": "Exam Type"},
-        color_discrete_map={     # Force distinct brand colors
-            "School Exams": "#1e293b", 
-            "Private Examination": "#2563eb"
-        },
-        text=agg["CreditRate"].astype(str) + "%", # Show % on top
-    )
-    
-    fig.update_traces(textposition="outside")
-    fig.update_layout(**L) # Use the updated L layout below for visual clarity
-    fig.update_yaxes(range=[0, 110], ticksuffix="%")
-    return fig
+            return f"Total: {fmt(total)}. Filters: {filter_desc}."
+        agg = credit_rate(df, ["State", "ExamType"]).sort_values(
+            "CreditRate", ascending=False
+        )
+        if agg.empty:
+            return f"Total: {fmt(total)}. Filters: {filter_desc}."
+        top = agg.iloc[0]
+        bot = agg.iloc[-1]
+        return (
+            f"Exam type credit rate by state. Filters: {filter_desc}. "
+            f"Total: **{fmt(total)}** results. "
+            f"Highest: **{top['ExamType']}** in **{top['State']}** — "
+            f"{top['CreditRate']}% credit rate. "
+            f"Lowest: **{bot['ExamType']}** in **{bot['State']}** — "
+            f"{bot['CreditRate']}% credit rate."
+        )
 
-#     # ── EXAM TYPE PERFORMANCE TRENDS ──────────────────────────────────────────
-#     elif analysis == "Exam Type Performance Trends":
-#         agg = credit_rate(df, ["ExamType","ExamYear"]).sort_values(["ExamType","ExamYear"])
-#         lines = [
-#             f"Exam type credit rate trends. Filters: {filter_desc}. "
-#             f"Total: **{fmt(total)}** results."
-#         ]
-#         for et, grp in agg.groupby("ExamType"):
-#             trend = trend_dir(grp.set_index("ExamYear")["CreditRate"])
-#             lines.append(f"**{et}**: {trend} trend.")
-#         return " ".join(lines)
+    # ── EXAM TYPE PERFORMANCE TRENDS ──────────────────────────────────────────
+    elif analysis == "Exam Type Performance Trends":
+        agg = credit_rate(df, ["ExamType","ExamYear"]).sort_values(["ExamType","ExamYear"])
+        lines = [
+            f"Exam type credit rate trends. Filters: {filter_desc}. "
+            f"Total: **{fmt(total)}** results."
+        ]
+        for et, grp in agg.groupby("ExamType"):
+            trend = trend_dir(grp.set_index("ExamYear")["CreditRate"])
+            lines.append(f"**{et}**: {trend} trend.")
+        return " ".join(lines)
 
-#     # ── GENERIC FALLBACK ──────────────────────────────────────────────────────
-#     else:
-#         total = int(df["Count"].sum()) if "Count" in df.columns else 0
-#         lines = [f"**{analysis}**. Filters: {filter_desc}. Total: **{fmt(total)}**."]
-#         for col in ["ExamYear","State","Sex","AgeGroup","Disability","ExamType","Sponsor"]:
-#             if col in df.columns:
-#                 top_val = df.groupby(col)["Count"].sum().idxmax()
-#                 top_ct  = int(df.groupby(col)["Count"].sum().max())
-#                 lines.append(f"Top **{col}**: {top_val} ({fmt(top_ct)}, {pct(top_ct, total)}).")
-#         return " ".join(lines)
-
+ # ── GENERIC FALLBACK ──────────────────────────────────────────────────────
+    else:
+        lines = [f"**{analysis}**. Filters: {filter_desc}. Total: **{fmt(total)}**."]
+        for col in ["ExamYear","State","Sex","AgeGroup","Disability","ExamType","Sponsor"]:
+            if col in df.columns:
+                top_val = df.groupby(col)["Count"].sum().idxmax()
+                top_ct  = int(df.groupby(col)["Count"].sum().max())
+                lines.append(
+                    f"Top **{col}**: {top_val} ({fmt(top_ct)}, {pct(top_ct, total)})."
+                )
+        return " ".join(lines)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHART BUILDER
@@ -1619,8 +1581,6 @@ st.markdown(f"""
 # ─────────────────────────────────────────────────────────────────────────────
 # RENDER EACH REPORT
 # ─────────────────────────────────────────────────────────────────────────────
-# chart_images_by_report stores the PNG paths indexed by report idx.
-# These are collected BEFORE PDF generation so they are ready to embed.
 chart_images_by_report: dict = {}
 
 for idx, item in enumerate(report_cart, start=1):
@@ -1720,12 +1680,6 @@ for idx, item in enumerate(report_cart, start=1):
     st.markdown(f'<div class="narrative-box">{narrative}</div>', unsafe_allow_html=True)
 
     # ── Chart ──────────────────────────────────────────────────────────────
-    # Charts are rendered on screen AND their PNG bytes are saved to
-    # session_state with a stable key like "chart_bytes_1_0".
-    # The key format is: chart_bytes_{report_idx}_{chart_idx}
-    # This survives the Streamlit rerun that happens when the user
-    # clicks "Generate PDF" — local variables don't survive reruns,
-    # but session_state does.
     result = build_chart(analysis, df, filters)
 
     if result is not None:
@@ -1756,10 +1710,6 @@ for idx, item in enumerate(report_cart, start=1):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # COMBINED PDF
-# Charts are read from session_state (set during the render loop above).
-# Key format: chart_bytes_{report_idx}_{chart_idx}
-# We scan up to 5 charts per report (virtually all reports have 1 or 2).
-# ─────────────────────────────────────────────────────────────────────────────
 st.markdown('<div class="download-section">', unsafe_allow_html=True)
 st.markdown("### 📄 Download Full Report PDF")
 st.markdown("All reports, insights, and charts in one PDF.")
@@ -1862,24 +1812,34 @@ def generate_combined_pdf(report_cart, chart_images_by_report, user_email, invoi
             elements.append(Spacer(1, 10))
 
         # Charts — use pre-saved PNGs from the screen render
-        img_paths = chart_images_by_report.get(i, [])
-        if img_paths:
-            elements.append(Paragraph("Visualisation", head_style))
-            for img_path in img_paths:
-                if img_path and os.path.exists(img_path):
-                    elements.append(Image(img_path, width=660, height=330))
-                    elements.append(Spacer(1, 12))
-        else:
-            # Fallback: try to regenerate chart for PDF
-            if df_item is not None and not df_item.empty:
-                result = build_chart(analysis, df_item, filters_i)
-                if result is not None:
+         # Read chart bytes from session_state (survives Streamlit reruns)
+        chart_added = False
+        for chart_idx in range(5):   # scan up to 5 charts per report
+            key = f"chart_bytes_{i}_{chart_idx}"
+            img_bytes = st.session_state.get(key)
+            if img_bytes:
+                if not chart_added:
                     elements.append(Paragraph("Visualisation", head_style))
-                    for fig in (result if isinstance(result, tuple) else (result,)):
-                        p = save_chart_image(fig)
-                        if p and os.path.exists(p):
-                            elements.append(Image(p, width=660, height=330))
+                    chart_added = True
+                elements.append(Image(BytesIO(img_bytes), width=660, height=330))
+                elements.append(Spacer(1, 12))
+
+        # Fallback: regenerate if session_state bytes not available
+        if not chart_added and df_item is not None and not df_item.empty:
+            result = build_chart(analysis, df_item, filters_i)
+            if result is not None:
+                elements.append(Paragraph("Visualisation", head_style))
+                for fig in (result if isinstance(result, tuple) else (result,)):
+                    try:
+                        img_bytes = fig.to_image(format="png", scale=2,
+                                                  width=900, height=420)
+                        if img_bytes:
+                            elements.append(
+                                Image(BytesIO(img_bytes), width=660, height=330)
+                            )
                             elements.append(Spacer(1, 12))
+                    except Exception:
+                        pass
 
         elements.append(HRFlowable(width="100%", thickness=0.5,
                                     color=colors.HexColor("#e2e8f0"), spaceAfter=16))

@@ -310,27 +310,27 @@ for idx, row in filtered_invoices.iterrows():
         # View Details - Opens full invoice page
         with action_cols[0]:
             if st.button("👁️", key=f"view_{ref}", help="View Invoice Details"):
-                st.session_state.invoice_ref = ref
-                st.session_state.pending_invoice_saved = True
-                
                 try:
+                    # 1. Parse the JSON data from the database
                     data_dict = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
-                    st.session_state.saved_group = data_dict.get('report_group')
-                    st.session_state.saved_filters = data_dict.get('filters', {})
-                    st.session_state.saved_charts = data_dict.get('charts', [])
-                    st.session_state.saved_columns = data_dict.get('columns', [])
-                    st.session_state.saved_description = data_dict.get('description', f"Custom Report - {data_dict.get('report_group', 'N/A')}")
-                except:
-                    st.session_state.saved_columns = []
-                    st.session_state.saved_description = f"Custom Report - {report_type}"
-                
-                # Set payment status based on invoice status
-                if status == 'PENDING':
-                    st.session_state.payment_verified = False
-                else:
-                    st.session_state.payment_verified = True
-                
-                st.switch_page("pages/view_invoice.py")
+                    
+                    # 2. Re-fill the report_cart so view_invoice.py isn't empty
+                    # We look for the 'reports' key inside your JSON data
+                    st.session_state.report_cart = data_dict.get('reports', [])
+                    
+                    # 3. Set the invoice reference
+                    st.session_state.invoice_ref = ref
+                    
+                    # 4. Set payment status (Important for the 'Paid' watermark)
+                    # Standardize to uppercase to avoid mismatch
+                    current_status = status.upper()
+                    st.session_state.payment_verified = (current_status == 'PAID')
+                    
+                    # 5. Move to the page
+                    st.switch_page("pages/view_invoice.py")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error loading invoice data: {e}")
         
         # Download PDF
         with action_cols[1]:

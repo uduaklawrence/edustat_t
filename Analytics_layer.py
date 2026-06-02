@@ -1,24 +1,7 @@
 """
 Analytics_layer.py
 ──────────────────────────────────────────────────────────────────────────────
-KEY FIXES in this version
-──────────────────────────
-1. union_by_name=True on ALL read_parquet() calls.
-2. Removed MAX_ROWS cap from query_exam_data() — reports need all data.
-3. Added get_record_count() — lightweight COUNT(*) used by configure_filters
-   to validate filters and show matched-record count WITHOUT pulling raw rows.
-4. query_exam_data() now used only when raw rows are genuinely needed.
-5. get_top_bottom_states() helper for the Top/Bottom States report.
-6. Origin removed from get_filter_options().
-
-──────────────────────────────────────────────────────────────────────────────
-NEW IN THIS VERSION
-──────────────────────────
-7. query_aggregated_data() — core fix for the OOM crash on view_report.py.
-   Instead of SELECT * (all raw rows), this runs SELECT cols, COUNT(*) GROUP BY cols
-   entirely inside DuckDB. Only a tiny summary DataFrame enters Python RAM.
-   Used by view_report.py for all chart and narrative rendering.
-"""
+This module serves as the data access layer for the Streamlit dashboard."""
 
 import duckdb
 import pandas as pd

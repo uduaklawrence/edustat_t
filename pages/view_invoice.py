@@ -112,139 +112,101 @@ def clean_filters(filters: dict) -> dict:
         if not (k.startswith("_") and not k.startswith("__"))
     }
 
-
-def filter_display_str(filters: dict) -> str:
-    """
-    Human-readable filter summary for invoice display.
-    Hides both single-underscore UI keys AND double-underscore meta keys.
-    """
-    parts = []
-    for k, v in filters.items():
-        if k.startswith("_"):   # hides both _age_min and __subgroup__
-            continue
-        if v == [] or v is None:
-            display = "All"
-        elif isinstance(v, list):
-            display = ", ".join(str(x) for x in v)
-        else:
-            display = str(v)
-        parts.append(f"{k}: {display}")
-    return " | ".join(parts) if parts else "All data"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# INVOICE HTML BUILDER
-# Used for both the on-screen invoice and the pending PDF.
-# ─────────────────────────────────────────────────────────────────────────────
 def render_invoice_html(status_label: str, watermark_base64: str) -> str:
     user_display = user_email.split("@")[0].replace(".", " ").title()
     invoice_date = datetime.now().strftime("%B %d, %Y")
+    
+    COLOR_NAVY = "#5D768D"
+    COLOR_TOTAL_BAR = "#4B6584"
+    COLOR_LIGHT_GRAY = "#F4F7F9"
 
     rows_html = ""
     for idx, item in enumerate(report_cart, start=1):
-        report_group  = item.get("report_group", "—")
-        subgroup      = item.get("subgroup",     "—")
-        analysis      = item.get("analysis",     "—")
-        filters       = clean_filters(item.get("filters", {}))
-        item_price    = item.get("price",         0)
-        record_count  = item.get("record_count",  0)
-        weight        = item.get("total_weight",  "—")
-
-        filter_parts = []
-        for k, v in filters.items():
-            if k.startswith("_"):   # hide both _private and __meta__ keys from invoice display
-                continue
-            if v == [] or v is None:
-                val = "All"
-            elif isinstance(v, list):
-                val = ", ".join(str(i) for i in v)
-            else:
-                val = str(v)
-            filter_parts.append(f"<b>{k}:</b> {val}")
-        filter_html = (
-            " &nbsp;|&nbsp; ".join(filter_parts)
-            if filter_parts else "<i>All data — no specific filters</i>"
-        )
-
-        bg = "#fafafa" if idx % 2 == 0 else "white"
+        bg = COLOR_LIGHT_GRAY if idx % 2 == 0 else "white"
         rows_html += f"""
         <tr style="background-color:{bg};">
-            <td style="padding:10px;border:1px solid #ddd;vertical-align:top;">
-                <strong>#{idx} &mdash; {analysis}</strong><br>
-                <span style="font-size:12px;color:#444;line-height:1.8;">
-                    <b>Group:</b> {report_group} &nbsp;&nbsp;
-                    <b>Subgroup:</b> {subgroup}<br>
-                    <b>Records:</b> {record_count:,} &nbsp;&nbsp;
-                    <b>Weight:</b> {weight}<br>
-                    <b>Filters:</b> {filter_html}
-                </span>
+            <td style="padding:18px; border-bottom:1px solid #eee;">
+                <b style="color:#333; font-size: 15px;">{item.get('analysis', 'Report')}</b><br>
+                <small style="color:#666;">Group: {item.get('report_group', '—')} | Subgroup: {item.get('subgroup', '—')}</small>
             </td>
-            <td style="padding:10px;border:1px solid #ddd;text-align:center;
-                       vertical-align:top;width:50px;">1</td>
-            <td style="padding:10px;border:1px solid #ddd;text-align:right;
-                       vertical-align:top;width:140px;">
-                &#8358;{item_price:,}
-            </td>
+            <td style="padding:18px; text-align:center; border-bottom:1px solid #eee; color:#333;">1</td>
+            <td style="padding:18px; text-align:right; border-bottom:1px solid #eee; color:#333; font-weight:bold;">₦{item.get('price', 0):,}</td>
         </tr>
         """
 
     html = f"""
-    <h2 style="text-align:center;margin-bottom:4px;">INVOICE</h2>
-    <p style="text-align:center;color:#888;margin-top:0;font-size:13px;">
-        EduStat Analytics Platform
-    </p>
-    <hr>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px;">
-        <tr>
-            <td style="padding:4px 0;"><b>Name:</b> {user_display}</td>
-            <td style="padding:4px 0;"><b>Invoice No:</b> {invoice_ref}</td>
-        </tr>
-        <tr>
-            <td style="padding:4px 0;"><b>Date:</b> {invoice_date}</td>
-            <td style="padding:4px 0;"><b>Status:</b> {status_label}</td>
-        </tr>
-        <tr>
-            <td colspan="2" style="padding:4px 0;"><b>Email:</b> {user_email}</td>
-        </tr>
-    </table>
-    <hr>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        <thead>
-            <tr style="background-color:#1a56db;color:white;">
-                <th style="padding:10px;border:1px solid #ccc;text-align:left;">
-                    Report Details
-                </th>
-                <th style="padding:10px;border:1px solid #ccc;text-align:center;width:50px;">
-                    Qty
-                </th>
-                <th style="padding:10px;border:1px solid #ccc;text-align:right;width:140px;">
-                    Amount (&#8358;)
-                </th>
-            </tr>
-        </thead>
-        <tbody>
-            {rows_html}
-            <tr style="background-color:#f0f4ff;font-weight:bold;font-size:15px;">
-                <td colspan="2" style="text-align:right;padding:12px;border:1px solid #ccc;">
-                    Total &nbsp;({cart_count} report{'s' if cart_count > 1 else ''})
-                </td>
-                <td style="padding:12px;border:1px solid #ccc;text-align:right;">
-                    &#8358;{total_price:,}
-                </td>
-            </tr>
-        </tbody>
-    </table>
-    """
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; padding: 50px; background: white; border-radius: 15px; position: relative; overflow: hidden; min-height: 700px; border: 1px solid #ddd;">
+        
+        <!-- FIXED WATERMARK: Higher opacity + Blending fix -->
+        <div style="position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); opacity: 0.15; pointer-events: none; z-index: 0;">
+            <img src='data:image/jpeg;base64,{watermark_base64}' style='width: 700px; mix-blend-mode: multiply;'/>
+        </div>
 
-    return f"""
-    <div style="
-        background:white; padding:30px; border-radius:10px;
-        box-shadow:0 0 10px rgba(0,0,0,0.1);
-        background-image:url('data:image/jpeg;base64,{watermark_base64}');
-        background-repeat:no-repeat; background-position:center;
-        background-size:45%; font-family:Arial,sans-serif;
-    ">{html}</div>
+        <div style="position: relative; z-index: 1;">
+            <!-- Header Section -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 50px;">
+                <div>
+                    <h2 style="margin: 0; color: #1e293b; letter-spacing: 1px; font-size: 26px; font-weight: 800;">EDUSTAT REPORTING SYSTEM</h2>
+                    <p style="margin: 0; color: #888; font-size: 14px; font-style: italic;">Powered by Sidmach</p>
+                </div>
+                <h1 style="margin: 0; font-size: 75px; color: {COLOR_NAVY}; font-weight: 900; letter-spacing: -2px;">INVOICE</h1>
+            </div>
+
+            <!-- Customer & Invoice Info -->
+            <div style="display: flex; justify-content: space-between; margin-bottom: 50px; font-size: 15px;">
+                <div style="line-height: 1.8;">
+                    <span style="color: #888; text-transform: uppercase; font-size: 12px; font-weight: bold;">Customer Details</span><br>
+                    <b style="font-size: 18px;">{user_display}</b><br>
+                    {user_email}<br>
+                    +234 XXX XXX XXXX
+                </div>
+                <div style="text-align: right; line-height: 1.8;">
+                    <span style="color: #888; text-transform: uppercase; font-size: 12px; font-weight: bold;">Invoice Information</span><br>
+                    <b>REF:</b> {invoice_ref}<br>
+                    <b>DATE:</b> {invoice_date}
+                </div>
+            </div>
+
+            <!-- Main Items Table -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 0px;">
+                <thead>
+                    <tr style="background-color: {COLOR_NAVY}; color: white; text-transform: uppercase; font-size: 13px; letter-spacing: 1px;">
+                        <th style="padding: 15px; text-align: left;">Report Groups</th>
+                        <th style="padding: 15px; text-align: center; width: 60px;">Qty</th>
+                        <th style="padding: 15px; text-align: right; width: 150px;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+
+            <!-- The Large Total Bar -->
+            <div style="background-color: {COLOR_TOTAL_BAR}; color: white; display: flex; justify-content: space-between; align-items: center; padding: 25px 40px; margin-top: 0px;">
+                <span style="font-size: 30px; font-weight: 800; letter-spacing: 2px;">TOTAL</span>
+                <span style="font-size: 35px; font-weight: 800;">₦{total_price:,.2f}</span>
+            </div>
+
+            <!-- Status -->
+            <div style="margin-top: 30px; font-size: 16px;">
+                <b>STATUS:</b> &nbsp;&nbsp;&nbsp; 
+                <span style="color: {'#16a34a' if 'PAID' in status_label.upper() else '#dc2626'}; font-weight: bold; background: {'#dcfce7' if 'PAID' in status_label.upper() else '#fee2e2'}; padding: 5px 15px; border-radius: 5px;">
+                    {status_label.upper()}
+                </span>
+            </div>
+
+            <!-- Description -->
+            <div style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px;">
+                <b style="font-size: 14px; text-transform: uppercase; color: #888;">Description:</b>
+                <p style="color: #555; font-size: 14px; line-height: 1.7; margin-top: 10px;">
+                    This invoice covers the professional data analysis and reporting services provided by the Edustat Platform. 
+                    The reports generated include deep-dive analytics into student performance and demographic trends for {invoice_ref}.
+                </p>
+            </div>
+        </div>
+    </div>
     """
+    return html
 
 
 # ─────────────────────────────────────────────────────────────────────────────

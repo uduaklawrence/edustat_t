@@ -1,155 +1,92 @@
+import os
+from datetime import datetime
+from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-)
-from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.units import inch
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from datetime import datetime
-import os
-from io import BytesIO
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.enums import TA_RIGHT
 from watermark import add_watermark
 
-pdfmetrics.registerFont(
-    TTFont("DejaVu", "assets/fonts/DejaVuSans.ttf")
-)
+COLOR_NAVY = colors.HexColor("#5D768D")
+COLOR_TOTAL_BAR = colors.HexColor("#4B6584")
+COLOR_LIGHT_GRAY = colors.HexColor("#F4F7F9")
 
-# ------------------ CONFIG ------------------
-OUTPUT_DIR = "generated_invoices"
-
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
-
-
-# ------------------ MAIN FUNCTION ------------------
-def generate_invoice_pdf(
-    invoice_ref: str,
-    user_email: str,
-    amount: float,
-    description: str,
-    selected_group: str,
-    selected_columns: list,
-    status: str = "Pending Payment",
-):
-    """
-    Generates a professional invoice PDF (NO WATERMARK).
-    """
-
-    # Prepare file name
+def generate_invoice_pdf(invoice_ref, user_email, amount, description, selected_group, selected_columns, status="Pending Payment"):
     safe_ref = invoice_ref.replace("/", "_")
-    pdf_path = os.path.join(OUTPUT_DIR, f"Invoice_{safe_ref}.pdf")
-
-    # Create the document
-    doc = SimpleDocTemplate(
-        pdf_path, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=80, bottomMargin=50
-    )
+    pdf_path = os.path.join("generated_invoices", f"Invoice_{safe_ref}.pdf")
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4, margin=30)
     elements = []
     styles = getSampleStyleSheet()
 
-    styles["Title"].fontName = "DejaVu"
-    styles["Heading2"].fontName = "DejaVu"
-    styles["Normal"].fontName = "DejaVu"
-
-    # Custom styles
-    title_style = styles["Title"]
-    title_style.alignment = TA_CENTER
-    normal = styles["Normal"]
-    normal.spaceAfter = 12
- 
-    # ---------------- HEADER ----------------
-    elements.append(Paragraph("<b>EDUSTAT REPORTING PLATFORM</b>", title_style))
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>INVOICE</b>", styles["Heading2"]))
-    elements.append(Spacer(1, 10))
- 
-    # Invoice Info
-    invoice_date = datetime.now().strftime("%B %d, %Y")
-    user_display = user_email.split("@")[0].replace(".", " ").title()
- 
-    info_data = [
-        ["Invoice Reference:", invoice_ref],
-        ["Customer Name:", user_display],
-        ["Email Address:", user_email],
-        ["Report Group:", selected_group],
-        ["Date:", invoice_date],
-    ]
- 
-    info_table = Table(info_data, colWidths=[150, 350])
-    info_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
-                ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("FONTNAME", (0, 0), (-1, -1), "DejaVu"),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
-    )
-    elements.append(info_table)
-    elements.append(Spacer(1, 20))
- 
-    # ---------------- TABLE OF ITEMS ----------------
-    table_data = [["Selected Item", "Quantity", "Amount (₦)"]]
-    for col in selected_columns:
-        table_data.append([col, "1", "-"])
- 
-    table_data.append(["", "Grand Total", f"₦{amount:,.2f}"])
- 
-    table = Table(table_data, colWidths=[250, 100, 150])
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("FONTNAME", (0, 0), (-1, -1), "DejaVu"),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-                ("BACKGROUND", (-3, -1), (-1, -1), colors.whitesmoke),
-            ]
-        )
-    )
-    elements.append(table)
-    elements.append(Spacer(1, 20))
- 
-    # ---------------- STATUS ----------------
-    if "PAID" in status.upper():
-        status_html = '<b>Status:</b> <font color="green">PAID ✓</font>'
-    else:
-        status_html = '<b>Status:</b> <font color="orange">Pending Payment</font>'
- 
-    elements.append(Paragraph(status_html, normal))
-    elements.append(Spacer(1, 10))
- 
-    # ---------------- DESCRIPTION ----------------
-    elements.append(Paragraph(f"<b>Description:</b> {description}", normal))
+    # ── Header ──
+    elements.append(Paragraph("<font size=8 color='#777'><i>Powered by Sidmach</i></font>", ParagraphStyle('P', alignment=TA_RIGHT)))
+    
+    header_data = [[
+        Paragraph(f"<b><font size=18 color='#1E293B'>EDUSTAT REPORTING SYSTEM</font></b>", styles['Normal']),
+        Paragraph("<font size=40 color='#5D768D'>INVOICE</font>", ParagraphStyle('Inv', alignment=TA_RIGHT))
+    ]]
+    elements.append(Table(header_data, colWidths=[350, 180]))
     elements.append(Spacer(1, 30))
- 
-    # ---------------- FOOTER ----------------
-    elements.append(Paragraph("<i>Thank you for using Edustat Reporting Platform.</i>", normal))
- 
+
+    # ── Info ──
+    user_display = user_email.split("@")[0].title()
+    customer_info = [[f"Customer Name: {user_display}", f"Invoice REF: {invoice_ref}"],
+                     ["+234 XXX XXX XXXX", datetime.now().strftime("%B %d, %Y")],
+                     [user_email, ""]]
+    info_table = Table(customer_info, colWidths=[265, 265])
+    info_table.setStyle(TableStyle([('FONTSIZE', (0,0), (-1,-1), 10)]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 40))
+
+    # ── Items ──
+    table_data = [["REPORT GROUPS", "DETAILS", "QTY", "AMOUNT"]]
+    for col in selected_columns:
+        table_data.append([selected_group, col, "1", ""])
+    table_data[-1][3] = f"{amount:,.0f}"
+
+    item_table = Table(table_data, colWidths=[150, 170, 80, 130])
+    style = [
+        ('BACKGROUND', (0,0), (-1,0), COLOR_NAVY),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+    ]
+    for i in range(1, len(table_data)):
+        if i % 2 == 0: style.append(('BACKGROUND', (0,i), (-1,i), COLOR_LIGHT_GRAY))
+    
+    item_table.setStyle(TableStyle(style))
+    elements.append(item_table)
+
+    # ── Total Bar ──
+    total_table = Table([["TOTAL", f"₦{amount:,.2f}"]], colWidths=[320, 210])
+    total_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_TOTAL_BAR),
+        ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
+        ('FONTSIZE', (0,0), (-1,-1), 22),
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+        ('ALIGN', (0,0), (0,0), 'CENTER'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+        ('TOPPADDING', (0,0), (-1,-1), 15),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 15),
+    ]))
+    elements.append(total_table)
+    elements.append(Spacer(1, 20))
+
+    # ── Footer ──
+    status_color = 'green' if 'PAID' in status.upper() else 'red'
+    elements.append(Paragraph(f"STATUS: &nbsp;&nbsp; <font color='{status_color}'><b>{status.upper()}</b></font>", styles['Normal']))
+    elements.append(Spacer(1, 15))
+    elements.append(Paragraph(f"<b>DESCRIPTION:</b><br/>{description}", styles['Normal']))
+
     doc.build(elements)
- 
-    with open(pdf_path, "rb") as pdf_file:
-        pdf_bytes = BytesIO(pdf_file.read())
-        pdf_bytes.seek(0)
- 
-    watermarked_pdf = add_watermark(
-        input_pdf_stream=pdf_bytes,
-        watermark_image_path="altered_edustat.jpg"
-    )
- 
-    with open(pdf_path, "wb") as output_file:
-        output_file.write(watermarked_pdf.read())
- 
+
+    # Apply diagonal watermark (Ensure watermark.py uses rotate(-45))
+    with open(pdf_path, "rb") as f:
+        pdf_stream = BytesIO(f.read())
+    final_pdf = add_watermark(pdf_stream, watermark_image_path="altered_edustat.jpg")
+    with open(pdf_path, "wb") as f:
+        f.write(final_pdf.read())
+
     return pdf_path
