@@ -1,11 +1,3 @@
-"""
-WAEC Education Analytics — Performance Report Generator
-Connects to SQL Server, runs performance queries, generates PDF report
-Filtered to:
-- ExamYear: 2015 to 2025
-- State: Oyo
-"""
-
 import os
 import io
 from datetime import datetime

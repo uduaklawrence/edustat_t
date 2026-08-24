@@ -75,6 +75,9 @@ st.session_state.setdefault("selected_subgroup",   None)
 st.session_state.setdefault("invoice_ref",         None)
 st.session_state.setdefault("payment_verified",    False)
 
+# Clear filter state when user returns to create a new report
+st.session_state["_filter_page_key"] = None
+
 # -------------------- HEADER --------------------
 st.markdown("""
 <div class="report-selection-header">
@@ -144,9 +147,10 @@ for row in rows:
             """, unsafe_allow_html=True)
 
             if st.button(
-                "Explore Filters →",
+                "Explore Filters",
                 key=f"explore_{subgroup_name}",
                 type="primary",
+                use_container_width=True,
             ):
                 st.session_state.selected_subgroup   = subgroup_name
                 st.session_state.selected_main_group = selected_group

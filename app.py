@@ -1,14 +1,17 @@
 import streamlit as st
+import base64
+from pathlib import Path
 
 # ------------ SESSION DEFAULTS ------------
-st.set_page_config(page_title="Edustat – Educational Intelligence", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Edustat – Educational Intelligence", layout="wide",
+ initial_sidebar_state="collapsed")
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user_id" not in st.session_state:
     st.session_state.user_id = None
 
-# ------------ CUSTOM CSS ------------
+# ------------ CUSTOM CSS ------------s
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -25,7 +28,7 @@ st.markdown("""
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.2rem 4rem;
+    padding: 0.6rem 4rem;
     background: #fff;
     border-bottom: 1px solid #e8ecf0;
     position: sticky;
@@ -38,6 +41,8 @@ st.markdown("""
     font-weight: 900;
     color: #1a2744;
     letter-spacing: -0.5px;
+    padding-left: 40px;
+    line-height: 1.2;
 }
 .nav-brand span { color: #2563eb; }
 .nav-links { display: flex; gap: 2rem; align-items: center; }
@@ -65,6 +70,7 @@ st.markdown("""
     padding: 5rem 4rem 4rem;
     position: relative;
     overflow: hidden;
+    text-align: center;
 }
 .hero::before {
     content: '';
@@ -122,6 +128,10 @@ st.markdown("""
     max-width: 620px;
     margin-left: auto;
     margin-right: auto;
+    text-align: center !important; 
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: block;
 }
 .hero-cta {
     display: flex;
@@ -352,6 +362,23 @@ div[data-testid="column"]:nth-child(2) .stButton > button {
 }
 .stButton > button:hover { transform: translateY(-2px) !important; }
 
+/* ── Nav Get Started button — always visible ── */
+div[data-testid="column"]:nth-child(3) .stButton > button {
+    background: transparent !important;
+    color: #1a2744 !important;
+    border: 2px solid #1a2744 !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    padding: 0.5rem 1.2rem !important;
+    white-space: nowrap !important;
+}
+div[data-testid="column"]:nth-child(3) .stButton > button:hover {
+    background: #1a2744 !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+}
+
 .waec-notice {
     background: #fefce8;
     border: 1px solid #fde68a;
@@ -367,18 +394,30 @@ div[data-testid="column"]:nth-child(2) .stButton > button {
 </style>
 """, unsafe_allow_html=True)
 
+
+def get_base64_image(img_path: str) -> str:
+    with open(img_path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+# Load the logo once
+logo_base64 = get_base64_image("assets/Edustat.png")
+
 # ── NAV ──
-st.markdown("""
-<div class="nav">
-    <div class="nav-brand">Edu<span>stat</span></div>
-    <div class="nav-links">
-        <a href="#">Features</a>
-        <a href="#">About WAEC</a>
-        <a href="#">Pricing</a>
-        <span class="nav-badge">By WAEC Nigeria</span>
+nav_col1, nav_col2, nav_col3 = st.columns([2, 4, 1.5])
+with nav_col1:
+    st.markdown(f"""
+    <div style="display:flex; align-items:center; padding-top:5px; padding-left:40px;">
+        <img src="data:image/jpeg;base64,{logo_base64}" 
+             alt="Edustat Logo" 
+             style="height:40px; margin-right:10px;">
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+with nav_col3:
+    if st.button("Get Started — Sign Up", key="nav_signup"):
+        st.switch_page("pages/sign_up.py")
+
+st.markdown('<hr style="margin:0; border:none; border-bottom:1px solid #e8ecf0;">', unsafe_allow_html=True)
+
 
 # ── HERO ──
 st.markdown("""
@@ -387,37 +426,12 @@ st.markdown("""
         <div class="hero-tag">🎓 Nigeria's Premier Educational Intelligence Platform</div>
         <h1>Make <em>data-driven</em> decisions for Nigerian education</h1>
         <p class="hero-sub">
-            Edustat gives researchers, institutions, government agencies, and educators 
-            deep access to WAEC examination records — from candidate demographics to 
-            performance trends across all 36 states.
-        </p>
-    </div>
+            EduStat provides researchers, institutions, government agencies, and educators with 
+            comprehensive access to WAEC examination records, enabling analysis of candidate demographics 
+            and performance trends across Nigeria's 36 states and the Federal Capital Territory (FCT), 
+            Abuja.</p>
 </div>
 """, unsafe_allow_html=True)
-
-# ── HERO BUTTONS (Streamlit) ──
-st.markdown('<div style="background:linear-gradient(135deg,#0f172a,#1e3a8a);padding:0 4rem 4rem;display:flex;justify-content:center;">', unsafe_allow_html=True)
-
-if not st.session_state.get("logged_in", False):
-    bc1, bc2, bc3 = st.columns([2, 1.2, 1.2, 2][1:3] + [2], gap="small")
-    # center hack
-    _, c1, c2, _ = st.columns([3, 2, 2, 3])
-    with c1:
-        if st.button("🚀 Get Started — Sign Up", use_container_width=True, key="hero_signup"):
-            st.switch_page("pages/sign_up.py")
-    with c2:
-        if st.button("🔑 Login to Dashboard", use_container_width=True, key="hero_login"):
-            st.switch_page("pages/Login.py")
-else:
-    _, c1, c2, _ = st.columns([3, 2, 2, 3])
-    with c1:
-        if st.button("📊 Go to Dashboard", use_container_width=True, key="hero_dash"):
-            st.switch_page("pages/dashboard.py")
-    with c2:
-        if st.button("📄 Create New Report", use_container_width=True, key="hero_report"):
-            st.switch_page("pages/create_report.py")
-
-st.markdown('</div>', unsafe_allow_html=True)
 
 # ── STATS BAR ──
 st.markdown("""
@@ -461,32 +475,32 @@ st.markdown("""
         <div class="feat-card">
             <span class="feat-icon">👥</span>
             <div class="feat-title">Student Population</div>
-            <div class="feat-desc">Analyse candidate demographics including gender, disability status, and registration trends by state and LGA.</div>
+            <div class="feat-desc">Analyse candidate demographics including gender, disability status, 
+            and registration trends by state and LGA.</div>
         </div>
         <div class="feat-card">
             <span class="feat-icon">📈</span>
             <div class="feat-title">Performance Analysis</div>
-            <div class="feat-desc">Track subject-level pass rates, grade distributions, and year-on-year performance shifts across institutions.</div>
+            <div class="feat-desc">Track subject-level pass rates, grade distributions, and year-on-year 
+            performance shifts across institutions.</div>
         </div>
         <div class="feat-card">
             <span class="feat-icon">🗺️</span>
-            <div class="feat-title">State & LGA Insights</div>
-            <div class="feat-desc">Drill down from national averages to local government area performance for targeted intervention planning.</div>
+            <div class="feat-title">State & Insights</div>
+            <div class="feat-desc">Drill down from national averages to local government area performance 
+            for targeted intervention planning.</div>
         </div>
         <div class="feat-card">
             <span class="feat-icon">✅</span>
             <div class="feat-title">Success Rate Tracking</div>
-            <div class="feat-desc">Monitor credit pass rates, distinction counts, and failure patterns to benchmark school and state progress.</div>
-        </div>
-        <div class="feat-card">
-            <span class="feat-icon">⚠️</span>
-            <div class="feat-title">Malpractice Reports</div>
-            <div class="feat-desc">Access verified malpractice incident data by centre, state, and year to ensure examination integrity.</div>
+            <div class="feat-desc">Monitor credit pass rates, distinction counts, and failure patterns 
+            to benchmark school and state progress.</div>
         </div>
         <div class="feat-card">
             <span class="feat-icon">📋</span>
             <div class="feat-title">Custom Report Builder</div>
-            <div class="feat-desc">Generate, save, and download tailored reports filtered by year, state, gender, subject, and more — as PDF or CSV.</div>
+            <div class="feat-desc">Generate, save, and download tailored reports filtered by year, 
+            state, gender, subject, and more as PDF or CSV.</div>
         </div>
     </div>
 </div>

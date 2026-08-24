@@ -1,22 +1,3 @@
-# ==============================
-# 📄 VIEW INVOICE - MULTI-REPORT CART
-# ==============================
-#
-# CHANGES FROM PREVIOUS VERSION
-# ──────────────────────────────
-# 1. save_user_report() now passes subgroup, analysis, and record_count
-#    so that my_reports.py can fully reconstruct the report on load.
-#
-# 2. Private filter keys (starting with '_', e.g. _age_min) are stripped
-#    before saving — they are internal UI signals, not real filter values.
-#
-# 3. Invoice is saved to DB as PENDING immediately when the user
-#    reaches this page (before payment). This makes it appear in
-#    my_invoices.py with status PENDING for up to 3 days.
-#    The 3-day expiry is set via expires_at on the invoice record.
-#    (Requires create_invoice_record to accept an expires_at parameter
-#     — see db_queries note below.)
-
 import streamlit as st
 import streamlit.components.v1 as components
 import os
@@ -30,6 +11,7 @@ from db_queries import (
     mark_invoice_paid_by_paystack_ref,
     mark_invoice_failed,
     save_user_report,
+    create_invoice_record,
 )
 from paystack import initialize_transaction, verify_transaction
 from invoice_pdf import generate_invoice_pdf
@@ -78,11 +60,43 @@ saved_description = "; ".join(all_analyses)
 saved_group    = report_cart[0].get("report_group", "Mixed Reports")
 
 # ── INVOICE REF GUARD ─────────────────────────────────────────────────────────
+# ── INVOICE REF GUARD — create if not yet created ────────────────────────────
 if not st.session_state.get("invoice_ref"):
-    st.error("❌ No invoice reference found. Please create a report first.")
-    if st.button("← Go Back to Create Report"):
-        st.switch_page("pages/create_report.py")
-    st.stop()
+    if not report_cart:
+        st.error("❌ No invoice reference found. Please create a report first.")
+        if st.button("← Go Back to Create Report"):
+            st.switch_page("pages/create_report.py")
+        st.stop()
+    else:
+        # Cart exists but invoice not yet saved — create it now
+        try:
+            data_dict = {
+                "reports": [
+                    {
+                        "report_group": item.get("report_group"),
+                        "subgroup":     item.get("subgroup"),
+                        "analysis":     item.get("analysis"),
+                        "filters":      item.get("filters", {}),
+                        "record_count": item.get("record_count", 0),
+                        "price":        item.get("price"),
+                        "total_weight": item.get("total_weight"),
+                    }
+                    for item in report_cart
+                ]
+            }
+            invoice_ref = create_invoice_record(
+                user_id=user_id,
+                total=total_price,
+                data_dict=data_dict,
+            )
+            if invoice_ref:
+                st.session_state.invoice_ref = invoice_ref
+            else:
+                st.error("❌ Failed to create invoice. Please try again.")
+                st.stop()
+        except Exception as e:
+            st.error(f"❌ Failed to create invoice: {str(e)}")
+            st.stop()
 
 invoice_ref      = st.session_state.invoice_ref
 payment_verified = st.session_state.get("payment_verified", False)
@@ -272,6 +286,23 @@ if not payment_verified and not payment_failed:
     col2.metric("Price Per Report",  price_per_report_label)
     col3.metric("Total Payable",     f"₦{total_price:,}")
 
+     # ── Remove report option ──────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("**📋 Reports in this Invoice**")
+    for r_idx, r_item in enumerate(report_cart):
+        r_col1, r_col2 = st.columns([5, 1])
+        with r_col1:
+            st.markdown(
+                f"**{r_idx + 1}.** {r_item.get('analysis', '—')} — "
+                f"₦{r_item.get('price', 0):,} "
+                f"({r_item.get('record_count', 0):,} records)"
+            )
+        with r_col2:
+            if st.button("🗑 Remove", key=f"remove_report_{r_idx}"):
+                st.session_state.report_cart.pop(r_idx)
+                st.session_state.invoice_ref = None
+                st.rerun()
+                
     st.markdown("---")
 
     watermark_base64 = get_base64_image(WATERMARK_PATH)

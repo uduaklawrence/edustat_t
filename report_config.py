@@ -12,10 +12,15 @@ report_structure = {
     "Geographic & Regional Analysis": {
         "icon": "🗺️",
         "subgroups": {
-            "State of Origin Distribution": "Shows how candidates are distributed across states of origin, identifying the highest and lowest contributing states. Distinguishes between state of origin and state of examination to detect inter-state movement.",
-            "Regional & Zonal Spread": "Aggregates state-level data into geopolitical zones or regions to reveal macro-level geographic patterns in candidate concentration and educational participation.",
-            "Centre Geographic Distribution & Accessibility": "Maps how examination centres are distributed across states and regions, identifying areas that are underserved or have disproportionately high candidate loads relative to available centres.",  # ← trailing space removed
-            "State vs. Origin Disparity Analysis": "Compares a candidate's state of origin against the state where they sat for the exam to quantify inter-state examination migration and identify which states export or absorb the most candidates."
+            "Centre Statistics, Capacity and Load Analysis":
+            "Analyses examination centre distribution, candidate load per centre, "
+            "and areas where candidate demand may be high relative to available "
+            "examination centres.",
+
+        "State Candidate Volume Analysis":
+            "Examines candidate registration volumes across states, identifying "
+            "the highest and lowest contributing states, registration trends, "
+            "state comparisons, and year-on-year growth patterns.",
         }
     },
     "Registration & Enrollment Patterns": {

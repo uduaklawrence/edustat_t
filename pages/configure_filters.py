@@ -5,6 +5,7 @@ from Analytics_layer import (
     get_record_count,
     get_top_bottom_states,
 )
+from geo_config import ZONES                
 from db_queries import create_invoice_record
 from report_pricing import calculate_report_price
 import sys
@@ -98,6 +99,50 @@ st.markdown("""
 
 user_id = st.session_state.get("user_id", 0)
 
+def _post_add_nav(cart: list) -> None:
+    """Render the two post-add navigation buttons inline."""
+    count = len(cart)
+    total = sum(i.get("price", 0) for i in cart)
+    st.markdown(f"**📋 Invoice: {count} report(s) · Total: ₦{total:,}**")
+    n1, n2 = st.columns(2)
+    with n1:
+        if st.button("➕ Add Another Report", key=f"nav_more_{count}",
+                     use_container_width=True):
+            st.switch_page("pages/create_report.py")
+    with n2:
+        if st.button("📋 View Invoice & Checkout", key=f"nav_checkout_{count}",
+                     type="primary", use_container_width=True):
+            _go_to_invoice(cart)
+
+def _go_to_invoice(cart: list) -> None:
+    if not st.session_state.get("invoice_ref"):
+        total     = sum(item.get("price", 0) for item in cart)
+        data_dict = {
+            "reports": [
+                {
+                    "report_group": item.get("report_group"),
+                    "subgroup":     item.get("subgroup"),
+                    "analysis":     item.get("analysis"),
+                    "filters":      item.get("filters", {}),
+                    "record_count": item.get("record_count", 0),
+                    "price":        item.get("price"),
+                    "total_weight": item.get("total_weight"),
+                }
+                for item in cart
+            ]
+        }
+        invoice_ref = create_invoice_record(
+            user_id=st.session_state.get("user_id", 0),
+            total=total,
+            data_dict=data_dict,
+        )
+        if invoice_ref:
+            st.session_state.invoice_ref = invoice_ref
+        else:
+            st.error("❌ Failed to create invoice. Please try again.")
+            st.stop()
+    st.switch_page("pages/view_invoice.py")
+
 # ── Guard ──────────────────────────────────────────────────────────────────────
 if "selected_analysis" not in st.session_state:
     st.error("❌ No analysis selected. Please go back and select an analysis type.")
@@ -110,6 +155,39 @@ selected_subgroup   = st.session_state.get("selected_subgroup",   "")
 selected_main_group = st.session_state.get("selected_main_group", "")
 
 filter_options = get_filter_options()
+
+# ── Reset filter state when entering a fresh report configuration ──────────
+reset_key = f"filter_page_{selected_analysis}"
+if st.session_state.get("_filter_page_key") != reset_key:
+    keys_to_clear = [
+        "all_years", "exam_year", "all_sex", "sex_select",
+        "all_states", "state_select", "all_agegroup", "agegroup_select",
+        "all_regions", "region_select",
+        "all_centres", "centre_select", "top_n_centre",
+        "all_disability", "disability_select",
+        "all_sponsor", "sponsor_select",
+        "all_examtype", "examtype_select",
+        "all_subject", "subject_select",
+        "all_grade", "grade_select",
+        "all_status", "status_select",
+        # ── special case keys ──
+        "ar_all_years", "ar_years", "ar_all_states", "ar_states",
+        "cohort_all_years", "cohort_years", "cohort_all_sex", "cohort_sex", "cohort_age_range",
+        "cs_all_years", "cs_years", "cs_extra_subjects",
+        "pf_pass_grades", "pf_fail_grades", "pf_all_years", "pf_years",
+        "pf_all_states", "pf_states", "pf_all_sex", "pf_sex", "pf_all_et", "pf_et",
+        "bw_all_years", "bw_years", "bw_all_states", "bw_states", "bw_top_n",
+        "tb_exam_year", "tb_top_n",
+    
+    # ── also clear post-add navigation state ──
+    "post_add_more", "post_add_checkout",
+    "nav_more_1", "nav_more_2", "nav_more_3",
+    "nav_checkout_1", "nav_checkout_2", "nav_checkout_3",
+    ]
+
+    for k in keys_to_clear:
+        st.session_state.pop(k, None)
+    st.session_state["_filter_page_key"] = reset_key
 
 # ── Filter mapping ─────────────────────────────────────────────────────────────
 filter_mapping = {
@@ -131,13 +209,12 @@ filter_mapping = {
     "State Registration Trends":                         ["ExamYear", "State"],
     "State Enrollment Comparison":                       ["ExamYear", "State"],
     "State Growth Rate Analysis":                        ["ExamYear", "State"],
-    "Centre Count by State & Region":                    ["State", "centre"],
-    "Candidate Load per Centre":                         ["State", "centre"],
-    "Underserved Area Identification":                   ["State", "centre"],
+    "Centre Count by State & Region":                    ["State", "ExamYear"],
+    "Candidate Load per Centre":                          ["State", "ExamYear", "__TOP_N_CENTRE__"],
     "Centre Accessibility Index":                        ["State", "centre"],
     "Registration Trends & Growth Rate":                 ["ExamYear"],
     "Registration by Exam Type":                         ["ExamYear", "ExamType"],
-    "Registration Forecast":                             ["ExamYear", "State"],
+    "Registration Forecast":                             ["ExamYear", "__FORECAST_HORIZON__"],
     "Most & Least Registered Subjects":                  ["Subject"],
     "Popular Subject Combinations":                      ["ExamYear", "Subject"],
     "Compulsory Subject Compliance":                     ["__COMPULSORY_SUBJECT__"],
@@ -154,16 +231,14 @@ filter_mapping = {
     "Exam Type Share by Year":                           ["ExamType", "ExamYear"],
     "Exam Type by State":                                ["ExamType", "State"],
     "Exam Type by Gender":                               ["ExamType", "Sex"],
-    "Active Centres by State":                           ["State", "centre"],
-    "Over-Capacity Centre Detection":                    ["State", "centre"],
-    "Underutilized Centre Analysis":                     ["State", "centre"],
     "Top Performing Centres":                            ["ExamYear", "centre", "State"],
     "Bottom Performing Centres":                         ["ExamYear", "centre", "State"],
     "Centre Performance Scorecard":                      ["ExamYear", "centre", "State"],
     "Centre Performance Trends":                         ["ExamYear", "centre"],
     "Registered vs Sat Candidates":                      ["ExamYear", "State", "Status"],
-    "Absenteeism Rate by State":                         ["ExamYear", "State", "Status"],
-    "Absenteeism by Exam Type & Gender":                 ["ExamType", "Sex", "Status"],
+    "Absenteeism Rate by State":                         ["State", "Status"],
+    "Absenteeism by Exam Type":                          ["ExamType", "Status"],
+    "Absenteeism by Gender":                             ["Status", "Sex"],
     "Absenteeism Trends Over Time":                      ["ExamYear", "Status"],
     "Full Grade Breakdown":                              ["ExamYear", "Grade"],
     "Pass vs Fail Rate":                                 ["__PASS_FAIL__"],
@@ -304,16 +379,46 @@ if required_filters == ["__TOP_BOTTOM_STATES__"]:
             st.dataframe(ranked, width="stretch")
 
     combined_states = list(dict.fromkeys(tb_data["top"] + tb_data["bottom"]))
-    tb_filters      = {"State": combined_states, "ExamYear": sel_years}
+
+    # Effective filters for pricing:
+    # - combined_states = top N + bottom N states = 2 × top_n_val entries
+    # - sel_years = user selected exam years
+    # Both affect the weight and therefore the price
+    tb_filters = {
+        "State":    combined_states,
+        "ExamYear": sel_years,
+    }
+
+    # Price reflects: state count (top N + bottom N) × year count
+    pricing      = calculate_report_price(tb_filters)
+    state_weight = len(combined_states)   # top_n + bottom_n
+    year_weight  = len(sel_years) if sel_years else 1
+    total_weight = state_weight * year_weight
 
     col_a, col_b = st.columns([2.6, 1], gap="large")
     with col_b:
-        pricing = calculate_report_price(tb_filters)
+        rec_count_preview = get_record_count(
+            states=tuple(combined_states),
+            exam_years=tuple(sel_years),
+        )
         st.markdown(
             '<div class="pricing-panel">'
             '<div class="pricing-panel-title">💰 Live Pricing</div>'
-            '<div class="price-display">' + pricing["price_formatted"] + "</div>"
-            '<div class="price-label">Estimated report price</div></div>',
+            '<div class="price-display">' + pricing["price_formatted"] + '</div>'
+            '<div class="price-label">Top & Bottom '
+            + str(top_n_val)
+            + ' states ('
+            + str(len(combined_states))
+            + ' states × '
+            + str(year_weight)
+            + ' year'
+            + ('s' if year_weight != 1 else '')
+            + ')</div>'
+            '<div class="record-count-box" style="margin-top:0.8rem;">'
+            '📊 Matching: <strong>'
+            + f"{rec_count_preview:,}"
+            + '</strong> unique candidates</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
@@ -330,6 +435,7 @@ if required_filters == ["__TOP_BOTTOM_STATES__"]:
                 final_pricing = calculate_report_price(tb_filters)
                 rec_count = get_record_count(states=tuple(combined_states),
                                              exam_years=tuple(sel_years))
+                tb_filters["TopN"] = top_n_val   # pass N to view_report
                 report_item = {
                     "id":               len(st.session_state.report_cart) + 1,
                     "report_group":     selected_main_group,
@@ -345,37 +451,417 @@ if required_filters == ["__TOP_BOTTOM_STATES__"]:
                     "description":      selected_analysis,
                 }
                 st.session_state.report_cart.append(report_item)
-                st.success("✅ Added Top & Bottom States report to invoice.")
-                st.balloons()
+                st.session_state.invoice_ref = None   # force re-creation with updated cart
+                # st.success("✅ Added Top & Bottom States report to invoice.")
+                # st.balloons()
     st.stop()
 
+# ── CANDIDATE LOAD PER CENTRE — TOP / BOTTOM N ───────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+if "__TOP_N_CENTRE__" in required_filters:
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SPECIAL CASE: Age Range of Candidates
-# Shows a count breakdown by AgeGroup with optional ExamYear / State filter.
-# No mandatory selections — user can add to invoice with all data.
-# ─────────────────────────────────────────────────────────────────────────────
-if required_filters == ["__AGE_RANGE__"]:
-    st.markdown(
-        '<div class="filter-section-title">Filter Options (all optional)</div>',
-        unsafe_allow_html=True,
-    )
+    # This special report is self-contained.
+    # Do NOT rely on filter_values / col_price from STANDARD FILTER LAYOUT,
+    # because that section is below this block and has not executed yet.
+    filter_values = {}
+    configured_filters = set()
+
     years_all  = filter_options.get("ExamYear", [])
     states_all = filter_options.get("State", [])
 
+    col_filters, col_price = st.columns([2.6, 1], gap="large")
+
+    # ── LEFT: REPORT CONFIGURATION ───────────────────────────────────────────
+    with col_filters:
+
+        st.markdown(
+            "Identify examination centres handling the **highest** or **lowest** "
+            "candidate volumes within the selected examination period and State scope."
+        )
+
+        # ── Exam Year ────────────────────────────────────────────────────────
+        st.markdown("**📅 Select Exam Year(s)**")
+
+        all_years = st.checkbox(
+            "Include All Exam Years",
+            value=False,
+            key="centre_load_all_years",
+        )
+
+        if all_years:
+            selected_years = list(years_all)
+        else:
+            selected_years = st.multiselect(
+                "Select one or more exam years",
+                years_all,
+                key="centre_load_years",
+            )
+
+        if selected_years:
+            filter_values["ExamYear"] = selected_years
+            configured_filters.add("ExamYear")
+
+        # ── State ────────────────────────────────────────────────────────────
+        st.markdown("**🌍 Select State(s)**")
+
+        all_states = st.checkbox(
+            "Include All States",
+            value=False,
+            key="centre_load_all_states",
+        )
+
+        if all_states:
+            selected_states = list(states_all)
+        else:
+            selected_states = st.multiselect(
+                "Select one or more states",
+                states_all,
+                key="centre_load_states",
+            )
+
+        if selected_states:
+            filter_values["State"] = selected_states
+            configured_filters.add("State")
+
+        st.markdown("---")
+
+        # ── Direction ────────────────────────────────────────────────────────
+        st.markdown("**🏫 Centre Load Direction**")
+
+        load_direction = st.radio(
+            "Which centres do you want to analyse?",
+            options=[
+                "🔴 Highest Load — Highest candidate volumes",
+                "🟢 Lowest Load — Lowest candidate volumes",
+                "🔵 Both — Highest and lowest",
+            ],
+            index=0,
+            key="centre_load_direction",
+        )
+
+        # ── Top N ────────────────────────────────────────────────────────────
+        top_n_centre = st.radio(
+            "How many centres should be included in each ranking?",
+            options=[3, 5, 10, 15],
+            index=1,
+            horizontal=True,
+            key="top_n_centre_select",
+        )
+
+        filter_values["LoadDirection"] = load_direction
+        filter_values["TopN"] = top_n_centre
+
+
+        ## ── REGISTRATION FORECAST ─────────────────────────────────────────────────────
+        if "__FORECAST_HORIZON__" in required_filters:
+            st.markdown("#### 📈 Forecast Configuration")
+            st.markdown(
+                "This report uses historical registration data to project future "
+                "candidate volumes. Select how many years ahead to forecast."
+                )
+
+            horizon = st.radio(
+                "Forecast horizon — how many years ahead?",
+                options=[1, 3, 5, 10],
+                index=1,
+                horizontal=True,
+                key="forecast_horizon",
+                )
+
+            filter_values["ForecastHorizon"] = horizon
+            configured_filters.add("ForecastHorizon")
+
+            years_opts = filter_options.get("ExamYear", [])
+            effective_years = (
+                list(years_opts)
+                if st.session_state.get("all_years")
+                else filter_values.get("ExamYear", [])
+                )
+
+            base_rec_count = get_record_count(
+                exam_years=tuple(effective_years),
+            )
+
+            # Price scales with forecast horizon
+            base_pricing   = calculate_report_price(
+                {k: v for k, v in filter_values.items()
+                 if k != "ForecastHorizon"}
+                 )
+            adjusted_price = base_pricing["price"] * horizon
+            adjusted_fmt   = f"₦{adjusted_price:,}"
+
+            with col_price:
+                if not effective_years and not filter_values.get("ExamYear"):
+                    st.markdown(
+                        '<div class="pricing-panel">'
+                        '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                        '<div style="font-family:\'DM Sans\',sans-serif;font-size:0.9rem;'
+                        'color:#94a3b8;padding:1rem 0;">Select at least one filter to see '
+                        'your price estimate.</div>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                        st.markdown(
+                            '<div class="pricing-panel">'
+                            '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                            '<div class="price-display">' + adjusted_fmt + '</div>'
+                            '<div class="price-label">Forecast: '
+                            + str(horizon) + ' year'
+                            + ('s' if horizon > 1 else '')
+                            + ' ahead</div>'
+                            '<div class="record-count-box" style="margin-top:0.8rem;">'
+                            '📊 Historical base: <strong>'
+                            + f"{base_rec_count:,}"
+                            + '</strong> unique candidates</div>'
+                            '<div style="margin-top:0.5rem;font-family:\'DM Sans\',sans-serif;'
+                            'font-size:0.78rem;color:#94a3b8;">'
+                            'Price scales with forecast horizon length.'
+                            '</div>'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                col_back_f, col_add_f = st.columns([1, 2])
+                with col_back_f:
+                        if st.button("← Back", key="forecast_back",
+                                     use_container_width=True):
+                            st.switch_page("pages/report_filters.py")
+                            with col_add_f:
+                                if st.button("＋ Add to Invoice", key="forecast_add",
+                                             type="primary", use_container_width=True):
+                                    fin_price = base_pricing["price"] * horizon
+                                    report_item = {
+                                        "report_group":  st.session_state.get("selected_group",    ""),
+                                        "subgroup":      st.session_state.get("selected_subgroup", ""),
+                                        "analysis":      selected_analysis,
+                                        "filters":       filter_values,
+                                        "record_count":  base_rec_count,
+                                        "price":         fin_price,
+                                        "price_fmt":     f"₦{fin_price:,}",
+                                        "total_weight":  base_pricing["total_weight"] * horizon,
+                                        }
+                                    st.session_state.report_cart.append(report_item)
+                                    st.session_state.invoice_ref = None
+                                    st.success(
+                                        f"✅ Added: **{selected_analysis}** — "
+                                        f"₦{fin_price:,} ({horizon}-year forecast)"
+                                        )
+                                    _post_add_nav(st.session_state.report_cart)
+                                    st.stop()
+
+    # ── EFFECTIVE FILTERS FOR COUNTING ──────────────────────────────────────
+    effective_years = tuple(selected_years)
+    effective_states = tuple(selected_states)
+
+    centre_rec_count = 0
+
+    if selected_years or selected_states:
+        centre_rec_count = get_record_count(
+            exam_years=effective_years,
+            states=effective_states,
+        )
+
+
+    # ── PRICING ──────────────────────────────────────────────────────────────
+    pricing_filters = {}
+
+    if selected_years:
+        pricing_filters["ExamYear"] = selected_years
+
+    if selected_states:
+        pricing_filters["State"] = selected_states
+
+    base_pricing = calculate_report_price(pricing_filters)
+
+    multiplier = top_n_centre * (
+        2 if "Both" in load_direction else 1
+    )
+
+    adjusted_price = base_pricing["price"] * multiplier
+    adjusted_fmt = f"₦{adjusted_price:,}"
+
+    direction_label = (
+        "Highest & Lowest"
+        if "Both" in load_direction
+        else "Highest"
+        if "Highest" in load_direction
+        else "Lowest"
+    )
+
+
+    # ── RIGHT: LIVE PRICING ──────────────────────────────────────────────────
+    with col_price:
+
+        if not selected_years and not selected_states:
+
+            st.markdown(
+                '<div class="pricing-panel">'
+                '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                '<div style="font-family:\'DM Sans\',sans-serif;font-size:0.9rem;'
+                'color:#94a3b8;padding:1rem 0;">'
+                'Select at least one Exam Year or State to see your estimate.'
+                '</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        else:
+
+            both_note = " × 2 for both rankings" if "Both" in load_direction else ""
+
+            st.markdown(
+                '<div class="pricing-panel">'
+                '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                '<div class="price-display">'
+                + adjusted_fmt
+                + '</div>'
+                '<div class="price-label">'
+                + direction_label
+                + " — "
+                + str(top_n_centre)
+                + " centres"
+                + both_note
+                + '</div>'
+                '<div class="record-count-box" style="margin-top:0.8rem;">'
+                '📊 Candidates in selected scope: <strong>'
+                + f"{centre_rec_count:,}"
+                + '</strong>'
+                '</div>'
+                '<div style="margin-top:0.6rem;font-family:\'DM Sans\',sans-serif;'
+                'font-size:0.78rem;color:#94a3b8;line-height:1.5;">'
+                'The report will rank examination centres by unique candidate load '
+                'within the selected year and State scope.'
+                '</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+
+    # ── ACTION BUTTONS ────────────────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col_back, col_add = st.columns([1, 2])
+
+    with col_back:
+        if st.button(
+            "← Back",
+            key="centre_load_back",
+            use_container_width=True,
+        ):
+            st.switch_page("pages/report_filters.py")
+
+    with col_add:
+
+        if st.button(
+            "＋ Add to Invoice",
+            key="centre_load_add",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            if not selected_years and not selected_states:
+                st.error(
+                    "❌ Select at least one Exam Year or State "
+                    "before adding this report."
+                )
+
+            elif centre_rec_count == 0:
+                st.error(
+                    "❌ No candidates matched the selected scope. "
+                    "Adjust your filters and try again."
+                )
+
+            else:
+
+                saved_filters = {
+                    "ExamYear": selected_years,
+                    "State": selected_states,
+                    "LoadDirection": load_direction,
+                    "TopN": top_n_centre,
+                }
+
+                report_item = {
+                    "id": len(st.session_state.report_cart) + 1,
+                    "report_group": selected_main_group,
+                    "subgroup": selected_subgroup,
+                    "analysis": selected_analysis,
+                    "filters": saved_filters,
+                    "record_count": centre_rec_count,
+                    "price": adjusted_price,
+                    "price_fmt": adjusted_fmt,
+                    "total_weight": (
+                        base_pricing["total_weight"] * multiplier
+                    ),
+                    "weight_breakdown": base_pricing["filter_weights"],
+                    "added_at": datetime.now().isoformat(),
+                    "description": st.session_state.get(
+                        "selected_analysis_description",
+                        selected_analysis,
+                    ),
+                }
+
+                st.session_state.report_cart.append(report_item)
+                st.session_state.invoice_ref = None
+
+                st.success(
+                    f"✅ Added **{selected_analysis}** — "
+                    f"{direction_label}, {top_n_centre} centre"
+                    f"{'s' if top_n_centre != 1 else ''} — "
+                    f"{adjusted_fmt}"
+                )
+
+                _post_add_nav(st.session_state.report_cart)
+
+    st.stop()
+# ─────────────────────────────────────────────────────────────────────────────
+# SPECIAL CASE: Age Range of Candidates
+# ─────────────────────────────────────────────────────────────────────────────
+if required_filters == ["__AGE_RANGE__"]:
+    st.markdown(
+    '''
+    <div class="filter-section-title">
+        Select Population Scope
+    </div>
+
+    <div style="
+        font-size:0.95rem;
+        color:#64748b;
+        margin-top:-10px;
+        margin-bottom:24px;
+        line-height:1.6;
+    ">
+        This report automatically calculates candidate age ranges.
+        The filters below simply define <strong>which candidates</strong>
+        should be included in the analysis.
+    </div>
+    ''',
+    unsafe_allow_html=True,
+)
+    years_all  = filter_options.get("ExamYear", [])
+    states_all = filter_options.get("State", [])
+    exam_types = filter_options.get("ExamType", [])
+    age_groups = filter_options.get("AgeGroup", [])
+    disabilities = filter_options.get("Disability", [])
+    sponsors = filter_options.get("Sponsor", [])
+    subjects = filter_options.get("Subject", [])
+    grades = filter_options.get("Grade", [])
+    statuses = filter_options.get("Status", [])
+    
+
     col_f, col_p = st.columns([2.6, 1], gap="large")
     with col_f:
-        all_yrs = st.checkbox("Include All Exam Years", value=True, key="ar_all_years")
+        all_yrs = st.checkbox("Include All Exam Years", value=False, key="ar_all_years")
         if all_yrs:
-            ar_years = []
+            ar_years = list(years_all)  # all available years
         else:
-            ar_years = st.multiselect("Filter by Exam Year(s)", years_all, key="ar_years")
+            ar_years = st.multiselect("Limit analysis to specific Exam Year(s)", years_all, key="ar_years")
 
-        all_sts = st.checkbox("Include All States", value=True, key="ar_all_states")
+        all_sts = st.checkbox("Include All States", value=False, key="ar_all_states")
         if all_sts:
-            ar_states = []
+            ar_states = list(states_all)  # all available states
         else:
-            ar_states = st.multiselect("Filter by State(s)", states_all, key="ar_states")
+            ar_states = st.multiselect("Limit analysis to specific State(s)", states_all, key="ar_states")
 
     ar_filters = {}
     if ar_years:
@@ -383,25 +869,48 @@ if required_filters == ["__AGE_RANGE__"]:
     if ar_states:
         ar_filters["State"] = ar_states
 
-    # Always mark as configured — user is explicitly choosing to see all data
-    ar_configured = {"ExamYear", "State"}
+    # If "Include All" is ticked, pass ALL available categories
+    effective_years  = tuple(years_all) if st.session_state.get("ar_all_years") else tuple(ar_years)
+    effective_states = tuple(states_all)     if st.session_state.get("ar_all_states") else tuple(ar_states)
+
+    rec_count = get_record_count(
+        exam_years=effective_years,
+        states=effective_states,
+    )
 
     with col_p:
-        pricing = calculate_report_price(ar_filters if ar_filters else {"ExamYear": []})
-        rec_count = get_record_count(
-            exam_years=tuple(ar_years),
-            states=tuple(ar_states),
-        )
-        st.markdown(
-            '<div class="pricing-panel">'
-            '<div class="pricing-panel-title">💰 Live Pricing</div>'
-            '<div class="price-display">' + pricing["price_formatted"] + "</div>"
-            '<div class="price-label">Estimated report price</div>'
-            '<div class="record-count-box" style="margin-top:0.8rem;">📊 Matching: <strong>'
-            + f"{rec_count:,}" + "</strong> records</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        ar_configured = bool(ar_years) or bool(ar_states) or \
+                        st.session_state.get("ar_all_years") or \
+                        st.session_state.get("ar_all_states")
+
+        if not ar_configured:
+            st.markdown(
+                '<div class="pricing-panel">'
+                '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                '<div style="font-family:\'DM Sans\',sans-serif;font-size:0.9rem;'
+                'color:#94a3b8;padding:1rem 0;">Select at least one filter to see '
+                'your price estimate.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            effective_ar_filters = {}
+            if effective_years:
+                effective_ar_filters["ExamYear"] = list(effective_years)
+            if effective_states:
+                effective_ar_filters["State"] = list(effective_states)
+            pricing = calculate_report_price(effective_ar_filters if effective_ar_filters else {"ExamYear": list(effective_years)}
+                                             )
+            st.markdown(
+                '<div class="pricing-panel">'
+                '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                '<div class="price-display">' + pricing["price_formatted"] + "</div>"
+                '<div class="price-label">Estimated report price</div>'
+                '<div class="record-count-box" style="margin-top:0.8rem;">📊 Matching: <strong>'
+                + f"{rec_count:,}" + "</strong> records</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
     st.markdown("<br>", unsafe_allow_html=True)
     b1, _, b3 = st.columns(3)
@@ -437,8 +946,9 @@ if required_filters == ["__AGE_RANGE__"]:
                     "description":      selected_analysis,
                 }
                 st.session_state.report_cart.append(report_item)
+                st.session_state.invoice_ref = None   # force re-creation with updated cart
                 st.success("✅ Added Age Range of Candidates report to invoice.")
-                st.balloons()
+                # st.balloons()
     st.stop()
 
 
@@ -462,7 +972,7 @@ if required_filters == ["__COHORT_AGE__"]:
         years_all = filter_options.get("ExamYear", [])
         all_yrs   = st.checkbox("Include All Exam Years", value=False, key="cohort_all_years")
         if all_yrs:
-            cohort_years = []
+            cohort_years = list(years_all)  # all available years
             configured_cohort = True
         else:
             cohort_years = st.multiselect(
@@ -478,7 +988,7 @@ if required_filters == ["__COHORT_AGE__"]:
         genders_all = filter_options.get("Sex", ["Male", "Female"])
         all_sex     = st.checkbox("Include All Genders", value=True, key="cohort_all_sex")
         if all_sex:
-            cohort_sex = []
+            cohort_sex = ["Male", "Female"]
         else:
             cohort_sex = st.multiselect("👤 Gender(s)", genders_all, key="cohort_sex")
 
@@ -541,11 +1051,12 @@ if required_filters == ["__COHORT_AGE__"]:
                     "description":      selected_analysis,
                 }
                 st.session_state.report_cart.append(report_item)
+                st.session_state.invoice_ref = None   # force re-creation with updated cart
                 st.success(
                     "✅ Added Cohort Tracking report — ages "
                     + str(age_min) + "–" + str(age_max) + "."
                 )
-                st.balloons()
+                # st.balloons()
     st.stop()
 
 
@@ -568,7 +1079,7 @@ if required_filters == ["__COMPULSORY_SUBJECT__"]:
         years_all = filter_options.get("ExamYear", [])
         all_yrs   = st.checkbox("Include All Exam Years", value=False, key="cs_all_years")
         if all_yrs:
-            cs_years = []
+            cs_years = list(years_all)  # all available years
             cs_year_configured = True
         else:
             cs_years = st.multiselect(
@@ -643,21 +1154,17 @@ if required_filters == ["__COMPULSORY_SUBJECT__"]:
                     "description":      selected_analysis,
                 }
                 st.session_state.report_cart.append(report_item)
+                st.session_state.invoice_ref = None   # force re-creation with updated cart
                 st.success(
                     "✅ Added Compulsory Subject Compliance report — "
                     + str(len(final_subjects)) + " subjects."
                 )
-                st.balloons()
+                # st.balloons()
     st.stop()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SPECIAL CASE: Pass vs Fail Rate
-# The spec requires two filter groups:
-#   Group 1 — Pass bucket: user can include/exclude A1,B2,B3,C4,C5,C6,D7,E8
-#   Group 2 — Fail bucket: user can include/exclude D7,E8,F9
-# Plus optional demographic filters: ExamYear, State, Sex, ExamType.
-# The _pass_grades and _fail_grades keys are private signals to view_report.py.
 # ─────────────────────────────────────────────────────────────────────────────
 if required_filters == ["__PASS_FAIL__"]:
     st.markdown(
@@ -691,19 +1198,19 @@ if required_filters == ["__PASS_FAIL__"]:
 
         years_all  = filter_options.get("ExamYear", [])
         all_yrs    = st.checkbox("Include All Exam Years", value=True, key="pf_all_years")
-        pf_years   = [] if all_yrs else st.multiselect("📅 Exam Year(s)", years_all, key="pf_years")
+        pf_years   = list(years_all) if all_yrs else st.multiselect("📅 Exam Year(s)", years_all, key="pf_years")
 
         states_all = filter_options.get("State", [])
         all_sts    = st.checkbox("Include All States", value=True, key="pf_all_states")
-        pf_states  = [] if all_sts else st.multiselect("🌍 State(s)", states_all, key="pf_states")
+        pf_states  = list(states_all) if all_sts else st.multiselect("🌍 State(s)", states_all, key="pf_states")
 
         genders_all = filter_options.get("Sex", ["Male","Female"])
         all_sex     = st.checkbox("Include All Genders", value=True, key="pf_all_sex")
-        pf_sex      = [] if all_sex else st.multiselect("👤 Gender(s)", genders_all, key="pf_sex")
+        pf_sex      = ["Male", "Female"] if all_sex else st.multiselect("👤 Gender(s)", genders_all, key="pf_sex")
 
         exam_types_all = filter_options.get("ExamType", [])
         all_et         = st.checkbox("Include All Exam Types", value=True, key="pf_all_et")
-        pf_et          = [] if all_et else st.multiselect("📝 Exam Type(s)", exam_types_all, key="pf_et")
+        pf_et          = list(exam_types_all) if all_et else st.multiselect("📝 Exam Type(s)", exam_types_all, key="pf_et")
 
     # Build all selected grades to pass to query (pass + fail combined)
     all_selected_grades = list(dict.fromkeys(pf_pass + pf_fail))
@@ -719,26 +1226,47 @@ if required_filters == ["__PASS_FAIL__"]:
         "_fail_grades": pf_fail,
     }
 
+    effective_pf_years = tuple(years_all) if st.session_state.get("pf_all_years") else tuple(pf_years)
+    effective_pf_states = tuple(states_all) if st.session_state.get("pf_all_states") else tuple(pf_states)
+    effective_pf_sex = tuple(["Male", "Female"]) if st.session_state.get("pf_all_sex") else tuple(pf_sex)
+    effective_pf_et = tuple(exam_types_all) if st.session_state.get("pf_all_et") else tuple(pf_et)
+    effective_ar_gr = tuple(ALL_GRADES_OPTIONS) if st.session_state.get("pf_all_grades") else tuple(all_selected_grades)
+
     pf_rec = get_record_count(
-        exam_years  = tuple(pf_years),
-        states      = tuple(pf_states),
-        sex         = tuple(pf_sex),
-        exam_types  = tuple(pf_et),
-        grades      = tuple(all_selected_grades),
+        exam_years  = effective_pf_years,
+        states      = effective_pf_states,
+        sex         = effective_pf_sex,
+        exam_types  = effective_pf_et,
+        grades      = effective_ar_gr,
     )
 
     with col_p:
-        pricing = calculate_report_price({"ExamYear": pf_years, "Grade": all_selected_grades})
-        st.markdown(
-            '<div class="pricing-panel">'
-            '<div class="pricing-panel-title">💰 Live Pricing</div>'
-            '<div class="price-display">' + pricing["price_formatted"] + "</div>"
-            '<div class="price-label">Estimated report price</div>'
-            '<div class="record-count-box" style="margin-top:0.8rem;">📊 Matching: <strong>'
-            + f"{pf_rec:,}" + "</strong> records</div>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        # Only show price once user has interacted —
+        # pf_pass and pf_fail always have defaults so check
+        # if any optional demographic filter was also touched
+        pf_configured = bool(pf_pass or pf_fail)
+        if not pf_configured:
+            st.markdown(
+                '<div class="pricing-panel">'
+                '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                '<div style="font-family:\'DM Sans\',sans-serif;font-size:0.9rem;'
+                'color:#94a3b8;padding:1rem 0;">Configure grade buckets to see '
+                'your price estimate.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            pricing = calculate_report_price({"ExamYear": pf_years, "Grade": all_selected_grades})
+            st.markdown(
+                '<div class="pricing-panel">'
+                '<div class="pricing-panel-title">💰 Live Pricing</div>'
+                '<div class="price-display">' + pricing["price_formatted"] + "</div>"
+                '<div class="price-label">Estimated report price</div>'
+                '<div class="record-count-box" style="margin-top:0.8rem;">📊 Matching: <strong>'
+                + f"{pf_rec:,}" + "</strong> records</div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
     st.markdown("<br>", unsafe_allow_html=True)
     b1, _, b3 = st.columns(3)
@@ -770,12 +1298,13 @@ if required_filters == ["__PASS_FAIL__"]:
                     "description":      selected_analysis,
                 }
                 st.session_state.report_cart.append(report_item)
+                st.session_state.invoice_ref = None   # force re-creation with updated cart
                 st.success(
                     "✅ Added Pass vs Fail report — "
                     + str(len(pf_pass)) + " pass grades, "
                     + str(len(pf_fail)) + " fail grades."
                 )
-                st.balloons()
+                # st.balloons()
     st.stop()
 
 
@@ -810,7 +1339,7 @@ if required_filters == ["__BEST_WORST_SUBJECTS__"]:
         years_all = filter_options.get("ExamYear", [])
         all_yrs   = st.checkbox("Include All Exam Years", value=False, key="bw_all_years")
         if all_yrs:
-            bw_years = []
+            bw_years = list(years_all)  # all available years
             bw_configured = True
         else:
             bw_years = st.multiselect("📅 Filter by Exam Year(s)", years_all, key="bw_years")
@@ -818,7 +1347,7 @@ if required_filters == ["__BEST_WORST_SUBJECTS__"]:
 
         states_all = filter_options.get("State", [])
         all_sts    = st.checkbox("Include All States", value=True, key="bw_all_states")
-        bw_states  = [] if all_sts else st.multiselect("🌍 State(s)", states_all, key="bw_states")
+        bw_states  = list(states_all) if all_sts else st.multiselect("🌍 State(s)", states_all, key="bw_states")
 
     bw_filters = {
         "ExamYear": bw_years,
@@ -826,18 +1355,27 @@ if required_filters == ["__BEST_WORST_SUBJECTS__"]:
         "_top_n":   top_n,   # private key read by view_report build_chart
     }
 
+    effective_bw_years = tuple(years_all) if st.session_state.get("bw_all_years") else tuple(bw_years)
+    effective_bw_states = tuple(states_all) if st.session_state.get("bw_all_states") else tuple(bw_states)
+
     bw_rec = get_record_count(
-        exam_years = tuple(bw_years),
-        states     = tuple(bw_states),
+        exam_years = effective_bw_years,
+        states     = effective_bw_states,
     )
 
     with col_p:
-        pricing = calculate_report_price({"ExamYear": bw_years, "State": bw_states})
+        # top_n doubles the effective report scope (top N + bottom N)
+        # so multiply price weight by 2 when top_n >= 5
+        bw_price_filters = {"ExamYear": bw_years, "State": bw_states}
+        pricing = calculate_report_price(bw_price_filters)
+        # Adjust price for double report (top + bottom)
+        adjusted_price   = pricing["price"] * 2
+        adjusted_fmt     = f"₦{adjusted_price:,}"
         st.markdown(
             '<div class="pricing-panel">'
             '<div class="pricing-panel-title">💰 Live Pricing</div>'
-            '<div class="price-display">' + pricing["price_formatted"] + "</div>"
-            '<div class="price-label">Estimated report price</div>'
+            '<div class="price-display">' + adjusted_fmt + "</div>"
+            '<div class="price-label">Estimated report price (Top + Bottom ' + str(top_n) + ' subjects)</div>'
             '<div class="record-count-box" style="margin-top:0.8rem;">📊 Base records: <strong>'
             + f"{bw_rec:,}" + "</strong></div>"
             "</div>",
@@ -859,6 +1397,7 @@ if required_filters == ["__BEST_WORST_SUBJECTS__"]:
                 final_pricing = calculate_report_price(
                     {"ExamYear": bw_years, "State": bw_states}
                 )
+                adjusted_price   = final_pricing["price"] * 2
                 report_item = {
                     "id":               len(st.session_state.report_cart) + 1,
                     "report_group":     selected_main_group,
@@ -866,19 +1405,20 @@ if required_filters == ["__BEST_WORST_SUBJECTS__"]:
                     "analysis":         selected_analysis,
                     "filters":          bw_filters,
                     "record_count":     bw_rec,
-                    "price":            final_pricing["price"],
-                    "price_fmt":        final_pricing["price_formatted"],
+                    "price":            adjusted_price,
+                    "price_fmt":        f"₦{adjusted_price:,}",
                     "total_weight":     final_pricing["total_weight"],
                     "weight_breakdown": final_pricing["filter_weights"],
                     "added_at":         datetime.now().isoformat(),
                     "description":      selected_analysis,
                 }
                 st.session_state.report_cart.append(report_item)
+                st.session_state.invoice_ref = None   # force re-creation with updated cart
                 st.success(
                     "✅ Added Best & Worst Subjects — top/bottom "
                     + str(top_n) + " subjects."
                 )
-                st.balloons()
+                #st.balloons()
     st.stop()
 
 
@@ -921,7 +1461,7 @@ with col_filters:
             years   = filter_options.get("ExamYear", [])
             all_yrs = st.checkbox("Include All Years", value=False, key="all_years")
             if all_yrs:
-                filter_values["ExamYear"] = []
+                filter_values["ExamYear"] = list(years_all)  # all available years
                 configured_filters.add("ExamYear")
             else:
                 sel = st.multiselect(
@@ -937,7 +1477,7 @@ with col_filters:
             genders = filter_options.get("Sex", ["Male", "Female"])
             all_sex = st.checkbox("Include All Genders", value=False, key="all_sex")
             if all_sex:
-                filter_values["Sex"] = []
+                filter_values["Sex"] = ["Male", "Female"]  # all available genders
                 configured_filters.add("Sex")
             else:
                 sel = st.multiselect("Select one or more genders", genders, key="sex_select")
@@ -951,7 +1491,7 @@ with col_filters:
             if age_groups:
                 all_ag = st.checkbox("Include All Age Groups", value=False, key="all_agegroup")
                 if all_ag:
-                    filter_values["AgeGroup"] = []
+                    filter_values["AgeGroup"] = list(AGE_GROUPS_OPTIONS)  # all available age groups
                     configured_filters.add("AgeGroup")
                 else:
                     sel = st.multiselect(
@@ -969,7 +1509,7 @@ with col_filters:
             states     = filter_options.get("State", [])
             all_states = st.checkbox("Include All States", value=False, key="all_states")
             if all_states:
-                filter_values["State"] = []
+                filter_values["State"] = list(states_all)  # all available states
                 configured_filters.add("State")
             else:
                 sel = st.multiselect("Select one or more states", states, key="state_select")
@@ -977,6 +1517,10 @@ with col_filters:
                 if sel:
                     configured_filters.add("State")
 
+        elif filter_name == "Region":
+            st.markdown("**🗺️ Select Geopolitical Region(s)**")
+
+        
         elif filter_name == "centre":
             st.markdown("**🏫 Select Examination Centre(s)**")
             selected_states = filter_values.get("State", [])
@@ -994,7 +1538,7 @@ with col_filters:
 
             all_centres = st.checkbox("Include All Centres", value=False, key="all_centres")
             if all_centres:
-                filter_values["centre"] = []
+                filter_values["centre"] = list(centres)  # all available centres
                 configured_filters.add("centre")
             elif centres:
                 top_n_opts = {
@@ -1038,7 +1582,7 @@ with col_filters:
             if disabilities:
                 all_dis = st.checkbox("Include All", value=False, key="all_disability")
                 if all_dis:
-                    filter_values["Disability"] = []
+                    filter_values["Disability"] = list(disabilities)  # all available statuses
                     configured_filters.add("Disability")
                 else:
                     sel = st.multiselect(
@@ -1056,7 +1600,7 @@ with col_filters:
             if sponsors:
                 all_sp = st.checkbox("Include All Sponsors", value=False, key="all_sponsor")
                 if all_sp:
-                    filter_values["Sponsor"] = []
+                    filter_values["Sponsor"] = list(sponsors)  # all available sponsors
                     configured_filters.add("Sponsor")
                 else:
                     sel = st.multiselect(
@@ -1074,7 +1618,7 @@ with col_filters:
             if exam_types:
                 all_et = st.checkbox("Include All Exam Types", value=False, key="all_examtype")
                 if all_et:
-                    filter_values["ExamType"] = []
+                    filter_values["ExamType"] = list(exam_types)  # all available exam types
                     configured_filters.add("ExamType")
                 else:
                     sel = st.multiselect(
@@ -1092,7 +1636,7 @@ with col_filters:
             if subjects:
                 all_sub = st.checkbox("Include All Subjects", value=False, key="all_subject")
                 if all_sub:
-                    filter_values["Subject"] = []
+                    filter_values["Subject"] = list(subjects)  # all available subjects
                     configured_filters.add("Subject")
                 else:
                     sel = st.multiselect(
@@ -1110,7 +1654,7 @@ with col_filters:
             if grades:
                 all_gr = st.checkbox("Include All Grades", value=False, key="all_grade")
                 if all_gr:
-                    filter_values["Grade"] = []
+                    filter_values["Grade"] = list(grades)  # all available grades
                     configured_filters.add("Grade")
                 else:
                     sel = st.multiselect(
@@ -1128,7 +1672,7 @@ with col_filters:
             if statuses:
                 all_st = st.checkbox("Include All Statuses", value=False, key="all_status")
                 if all_st:
-                    filter_values["Status"] = []
+                    filter_values["Status"] = list(statuses)  # all available statuses
                     configured_filters.add("Status")
                 else:
                     sel = st.multiselect(
@@ -1163,39 +1707,50 @@ with col_filters:
 
 # ── Live Pricing Panel ─────────────────────────────────────────────────────────
 with col_price:
-    pricing          = calculate_report_price(filter_values)
-    weight_rows_html = ""
-    for fname, w in pricing["filter_weights"].items():
-        if fname not in configured_filters:
-            continue
-        val   = filter_values.get(fname)
-        label = fname + " (all)" if val == [] else fname + " (" + str(len(val)) + " sel.)"
-        weight_rows_html += (
-            '<div class="weight-row">'
-            '<span class="weight-key">' + label + "</span>"
-            '<span class="weight-val">× ' + str(w) + "</span></div>"
+    if not configured_filters:
+        st.markdown(
+            '<div class="pricing-panel">'
+            '<div class="pricing-panel-title">💰 Live Pricing</div>'
+            '<div style="font-family:\'DM Sans\',sans-serif;font-size:0.9rem;'
+            'color:#94a3b8;padding:1rem 0;">Select at least one filter to see '
+            'your price estimate.</div>'
+            '</div>',
+            unsafe_allow_html=True,
         )
+    else:
+        pricing          = calculate_report_price(filter_values)
+        weight_rows_html = ""
+        for fname, w in pricing["filter_weights"].items():
+            if fname not in configured_filters:
+                continue
+            val   = filter_values.get(fname)
+            label = fname + " (all)" if val == [] else fname + " (" + str(len(val)) + " sel.)"
+            weight_rows_html += (
+                '<div class="weight-row">'
+                '<span class="weight-key">' + label + "</span>"
+                '<span class="weight-val">× ' + str(w) + "</span></div>"
+            )
 
-    if not weight_rows_html:
-        weight_rows_html = (
-            "<div style=\"font-family:'DM Sans',sans-serif;font-size:0.85rem;"
-            "color:#94a3b8;padding:0.5rem 0;\">Configure filters to see breakdown</div>"
+        if not weight_rows_html:
+            weight_rows_html = (
+                "<div style=\"font-family:'DM Sans',sans-serif;font-size:0.85rem;"
+                "color:#94a3b8;padding:0.5rem 0;\">Configure filters to see breakdown</div>"
+            )
+
+        st.markdown(
+            '<div class="pricing-panel">'
+            '<div class="pricing-panel-title">💰 Live Pricing</div>'
+            '<div class="price-display">' + pricing["price_formatted"] + "</div>"
+            '<div class="price-label">Estimated report price</div>'
+            '<div style="margin-top:0.8rem">' + weight_rows_html + "</div>"
+            '<div class="weight-total"><span>Total weight</span><span>'
+            + str(pricing["total_weight"]) + "</span></div>"
+            "<div style=\"margin-top:1rem;font-family:'DM Sans',sans-serif;"
+            "font-size:0.78rem;color:#94a3b8;line-height:1.5;\">Price is the "
+            "<strong>product</strong> of all filter weights mapped to a pricing tier.</div>"
+            "</div>",
+            unsafe_allow_html=True,
         )
-
-    st.markdown(
-        '<div class="pricing-panel">'
-        '<div class="pricing-panel-title">💰 Live Pricing</div>'
-        '<div class="price-display">' + pricing["price_formatted"] + "</div>"
-        '<div class="price-label">Estimated report price</div>'
-        '<div style="margin-top:0.8rem">' + weight_rows_html + "</div>"
-        '<div class="weight-total"><span>Total weight</span><span>'
-        + str(pricing["total_weight"]) + "</span></div>"
-        "<div style=\"margin-top:1rem;font-family:'DM Sans',sans-serif;"
-        "font-size:0.78rem;color:#94a3b8;line-height:1.5;\">Price is the "
-        "<strong>product</strong> of all filter weights mapped to a pricing tier.</div>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
 
 # ── Action Buttons ─────────────────────────────────────────────────────────────
 st.markdown("<br>", unsafe_allow_html=True)
@@ -1273,17 +1828,66 @@ with btn3:
                 }
 
                 st.session_state.report_cart.append(report_item)
-
+                st.session_state.invoice_ref = None   # force re-creation with updated cart
                 st.success(
                     "✅ Added: **" + selected_analysis + "** — "
                     + final_pricing["price_formatted"]
                     + " (" + f"{record_count:,}" + " records)"
                 )
-                st.info(
-                    "📋 Invoice now has "
-                    + str(len(st.session_state.report_cart)) + " report(s)."
+                # st.balloons()
+
+                # ── Post-add navigation ──────────────────────────────────
+                cart_count_now = len(st.session_state.report_cart)
+                cart_total_now = sum(
+                    i.get("price", 0) for i in st.session_state.report_cart
                 )
-                st.balloons()
+                st.markdown(
+                    f"**📋 Invoice: {cart_count_now} report(s) · "
+                    f"Total: ₦{cart_total_now:,}**"
+                )
+                nav1, nav2 = st.columns(2)
+                with nav1:
+                    if st.button(
+                        "➕ Add Another Report",
+                        key="post_add_more",
+                        use_container_width=True,
+                    ):
+                        st.switch_page("pages/create_report.py")
+                with nav2:
+                    if st.button(
+                        "📋 View Invoice & Checkout",
+                        key="post_add_checkout",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        if not st.session_state.get("invoice_ref"):
+                            cart      = st.session_state.report_cart
+                            total     = sum(item.get("price", 0) for item in cart)
+                            data_dict = {
+                                "reports": [
+                                    {
+                                        "report_group": item.get("report_group"),
+                                        "subgroup":     item.get("subgroup"),
+                                        "analysis":     item.get("analysis"),
+                                        "filters":      item.get("filters", {}),
+                                        "record_count": item.get("record_count", 0),
+                                        "price":        item.get("price"),
+                                        "total_weight": item.get("total_weight"),
+                                    }
+                                    for item in cart
+                                ]
+                            }
+                            invoice_ref = create_invoice_record(
+                                user_id=st.session_state.get("user_id", 0),
+                                total=total,
+                                data_dict=data_dict,
+                            )
+                            if invoice_ref:
+                                st.session_state.invoice_ref = invoice_ref
+                            else:
+                                st.error("❌ Failed to create invoice. Please try again.")
+                                st.stop()
+                        st.switch_page("pages/view_invoice.py")
 
             except Exception as e:
                 st.error("❌ Failed to process filters: " + str(e))

@@ -1,18 +1,26 @@
+<<<<<<< HEAD
+=======
 """
 Analytics_layer.py
 ──────────────────────────────────────────────────────────────────────────────
 This module serves as the data access layer for the Streamlit dashboard."""
 
+>>>>>>> 01bad7e74c49f6d828e6c29a71834066002c441d
 import duckdb
 import pandas as pd
 from pathlib import Path
 import streamlit as st
+##from dotenv import load_dotenv
+##import os
 
-# ── CONFIGURATION ─────────────────────────────────────────────────────────────
+# ── CONFIGURATION ─────────────────────────────────────────────────────────
 PARQUET_FOLDER = Path(r"C:\Users\uludoh\Documents\DB-PARQUET\chunks_data")
 PARQUET_GLOB   = str(PARQUET_FOLDER / "**" / "*.parquet").replace("\\", "/")
 
 DASHBOARD_RECENT_YEARS = 2
+##load_dotenv(".env")  # Load environment variables from .env file
+##PARQUET_FOLDER = Path(os.getenv("PARQUET_FOLDER"))
+##PARQUET_GLOB = os.getenv("PARQUET_GLOB")
 
 
 # ── DUCKDB CONNECTION ──────────────────────────────────────────────────────────
@@ -51,10 +59,35 @@ def get_dashboard_kpis() -> dict:
 
         row = conn.execute(f"""
             SELECT
-                COUNT(*)                                                AS total,
-                COUNT(*) FILTER (WHERE LOWER(Sex) = 'male')            AS males,
-                COUNT(*) FILTER (WHERE LOWER(Sex) = 'female')          AS females,
-                COUNT(*) FILTER (WHERE Disability = 'Present')         AS disabled
+                COUNT(DISTINCT
+                    CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                    || '-' ||
+                    CAST(ExamNum AS VARCHAR)
+                )                                                       AS total,
+
+                COUNT(DISTINCT CASE
+                    WHEN LOWER(CAST(Sex AS VARCHAR)) = 'male'
+                    THEN CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                         || '-' || CAST(ExamNum AS VARCHAR)
+                    END
+                )                                                       AS males,
+
+                COUNT(DISTINCT CASE
+                    WHEN LOWER(CAST(Sex AS VARCHAR)) = 'female'
+                    THEN CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                         || '-' || CAST(ExamNum AS VARCHAR)
+                    END
+                )                                                       AS females,
+
+                COUNT(DISTINCT CASE
+                    WHEN Disability IS NOT NULL
+                         AND TRIM(LOWER(CAST(Disability AS VARCHAR)))
+                             NOT IN ('', 'none', 'no', 'false', '0', 'n/a')
+                    THEN CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                         || '-' || CAST(ExamNum AS VARCHAR)
+                    END
+                )                                                       AS disabled
+
             FROM read_parquet('{PARQUET_GLOB}', hive_partitioning=true, union_by_name=true)
             WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql})
         """).fetchone()
@@ -85,10 +118,16 @@ def get_dashboard_yearly_chart() -> pd.DataFrame:
         years_sql    = ", ".join(str(y) for y in recent_years)
 
         df = conn.execute(f"""
-            SELECT TRY_CAST(ExamYear AS INTEGER) AS ExamYear, COUNT(*) AS Count
+            SELECT
+                TRY_CAST(ExamYear AS INTEGER) AS ExamYear,
+                COUNT(DISTINCT
+                    CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                    || '-' || CAST(ExamNum AS VARCHAR)
+                ) AS Count
             FROM read_parquet('{PARQUET_GLOB}', hive_partitioning=true, union_by_name=true)
             WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql})
-            GROUP BY ExamYear ORDER BY ExamYear
+            GROUP BY TRY_CAST(ExamYear AS INTEGER)
+            ORDER BY ExamYear
         """).df()
 
         df["ExamYear"] = df["ExamYear"].astype(int)
@@ -108,10 +147,17 @@ def get_dashboard_gender_chart() -> pd.DataFrame:
         years_sql    = ", ".join(str(y) for y in recent_years)
 
         df = conn.execute(f"""
-            SELECT Sex, COUNT(*) AS Count
+            SELECT
+                CAST(Sex AS VARCHAR) AS Sex,
+                COUNT(DISTINCT
+                    CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                    || '-' || CAST(ExamNum AS VARCHAR)
+                ) AS Count
             FROM read_parquet('{PARQUET_GLOB}', hive_partitioning=true, union_by_name=true)
-            WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql}) AND Sex IS NOT NULL
-            GROUP BY Sex ORDER BY Sex
+            WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql})
+              AND Sex IS NOT NULL
+            GROUP BY CAST(Sex AS VARCHAR)
+            ORDER BY Sex
         """).df()
         return df
     except Exception as e:
@@ -129,10 +175,18 @@ def get_dashboard_top_centres(top_n: int = 5) -> pd.DataFrame:
         years_sql    = ", ".join(str(y) for y in recent_years)
 
         df = conn.execute(f"""
-            SELECT centre, State, COUNT(*) AS "Registered Candidates"
+            SELECT
+                CAST(centre AS VARCHAR) AS centre,
+                CAST(State AS VARCHAR)  AS State,
+                COUNT(DISTINCT
+                    CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                    || '-' || CAST(ExamNum AS VARCHAR)
+                ) AS "Registered Candidates"
             FROM read_parquet('{PARQUET_GLOB}', hive_partitioning=true, union_by_name=true)
-            WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql}) AND centre IS NOT NULL
-            GROUP BY centre, State
+            WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql})
+              AND centre IS NOT NULL
+              AND LOWER(CAST(ExamType AS VARCHAR)) = 'school exams'
+            GROUP BY CAST(centre AS VARCHAR), CAST(State AS VARCHAR)
             ORDER BY "Registered Candidates" DESC
             LIMIT {top_n}
         """).df()
@@ -154,11 +208,18 @@ def get_dashboard_state_summary() -> pd.DataFrame:
         years_sql    = ", ".join(str(y) for y in recent_years)
 
         df = conn.execute(f"""
-            SELECT TRY_CAST(ExamYear AS INTEGER) AS ExamYear, State,
-                   COUNT(*) AS NumberOfCandidates
+            SELECT
+                TRY_CAST(ExamYear AS INTEGER) AS ExamYear,
+                CAST(State AS VARCHAR) AS State,
+                COUNT(DISTINCT
+                    CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                    || '-' || CAST(ExamNum AS VARCHAR)
+                ) AS NumberOfCandidates
             FROM read_parquet('{PARQUET_GLOB}', hive_partitioning=true, union_by_name=true)
-            WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql}) AND State IS NOT NULL
-            GROUP BY ExamYear, State ORDER BY ExamYear, State
+            WHERE TRY_CAST(ExamYear AS INTEGER) IN ({years_sql})
+              AND State IS NOT NULL
+            GROUP BY TRY_CAST(ExamYear AS INTEGER), CAST(State AS VARCHAR)
+            ORDER BY ExamYear, State
         """).df()
 
         df["ExamYear"] = df["ExamYear"].astype(int)
@@ -180,10 +241,18 @@ def get_top_bottom_states(exam_years: tuple = (), top_n: int = 5) -> dict:
             where  = f"WHERE TRY_CAST(ExamYear AS INTEGER) IN ({joined})"
 
         df = conn.execute(f"""
-            SELECT State, COUNT(*) AS Candidates
-            FROM read_parquet('{PARQUET_GLOB}', hive_partitioning=true, union_by_name=true)
+            SELECT
+                CAST(State AS VARCHAR) AS State,
+                COUNT(DISTINCT
+                    CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                    || '-' || CAST(ExamNum AS VARCHAR)
+                ) AS Candidates
+            FROM read_parquet('{PARQUET_GLOB}',
+                              hive_partitioning=true,
+                              union_by_name=true)
             {where}
-            GROUP BY State ORDER BY Candidates DESC
+            GROUP BY CAST(State AS VARCHAR)
+            ORDER BY Candidates DESC
         """).df()
 
         if df.empty:
@@ -192,7 +261,7 @@ def get_top_bottom_states(exam_years: tuple = (), top_n: int = 5) -> dict:
         return {
             "top":        df.head(top_n)["State"].tolist(),
             "bottom":     df.tail(top_n)["State"].tolist(),
-            "all_ranked": df,
+            "all_ranked": df.reset_index(drop=True),
         }
     except Exception as e:
         st.error(f"❌ Top/Bottom states failed: {e}")
@@ -225,38 +294,80 @@ def get_exam_dataset() -> pd.DataFrame:
 
 
 # ── 2. RECORD COUNT (used by configure_filters for invoice validation) ─────────
-@st.cache_data(show_spinner="Counting matching records...", ttl=1800)
+# ── Category thresholds for "Include All" optimisation ───────────────────────
+# When the passed list length meets or exceeds the threshold, that filter
+# is skipped entirely — DuckDB scans all rows without a redundant IN clause.
+_ALL_THRESHOLDS = {
+    "exam_years":  50,    # dataset spans ~1890–2025
+    "states":      40,    # 36 states + FCT + possible extras
+    "sex":         3,     # Male, Female, Unknown
+    "age_groups":  5,     # <18, >=18 + misc
+    "disability":  10,
+    "sponsor":     10,
+    "centres":     9999,  # too many to enumerate — always filter
+    "exam_types":  10,
+    "subjects":    120,   # many subjects
+    "grades":      15,    # A1–F9 range
+    "statuses":    15,
+}
+
+@st.cache_data(show_spinner=False, ttl=3600)
 def get_record_count(
-    exam_years : tuple = (),
-    states     : tuple = (),
-    sex        : tuple = (),
-    disability : tuple = (),
-    sponsor    : tuple = (),
-    age_groups : tuple = (),
-    centres    : tuple = (),
-    exam_types : tuple = (),
-    subjects   : tuple = (),
-    grades     : tuple = (),
-    statuses   : tuple = (),
+    exam_years: tuple = (),
+    states:     tuple = (),
+    sex:        tuple = (),
+    age_groups: tuple = (),
+    disability: tuple = (),
+    sponsor:    tuple = (),
+    centres:    tuple = (),
+    exam_types: tuple = (),
+    subjects:   tuple = (),
+    grades:     tuple = (),
+    statuses:   tuple = (),
 ) -> int:
-    """
-    Fast COUNT(*) only — no raw data enters Python RAM.
-    Used on the configure_filters page to show how many records
-    a report will cover, and to validate that filters return data.
-    When all filters are empty (Select All), counts the full dataset.
-    """
     try:
         _check_folder()
-        conn    = _get_conn()
-        clauses = _build_where(
-            exam_years, states, sex, disability, (), sponsor,
-            age_groups, centres, exam_types, subjects, grades, statuses,
-        )
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        conn = _get_conn()
+
+        conditions = ["1=1"]
+
+        def _add(param_name: str, vals: tuple, col: str,
+                 cast: str = "VARCHAR", lower: bool = False) -> None:
+            if not vals:
+                return
+            if len(vals) >= _ALL_THRESHOLDS.get(param_name, 9999):
+                return
+            if cast == "INTEGER":
+                listed   = ", ".join(str(v) for v in vals)
+                col_expr = f"TRY_CAST({col} AS INTEGER)"
+            else:
+                listed   = ", ".join(f"'{v}'" for v in vals)
+                col_expr = (f"LOWER(CAST({col} AS VARCHAR))"
+                            if lower else f"CAST({col} AS VARCHAR)")
+            conditions.append(f"{col_expr} IN ({listed})")
+
+        _add("exam_years", exam_years, "ExamYear", cast="INTEGER")
+        _add("states",     states,     "State")
+        _add("sex",        sex,        "Sex",       lower=True)
+        _add("age_groups", age_groups, "AgeGroup")
+        _add("disability", disability, "Disability")
+        _add("sponsor",    sponsor,    "Sponsor")
+        _add("centres",    centres,    "centre")
+        _add("exam_types", exam_types, "ExamType")
+        _add("subjects",   subjects,   "Subject")
+        _add("grades",     grades,     "Grade")
+        _add("statuses",   statuses,   "Status")
+
+        where = "WHERE " + " AND ".join(conditions)
 
         row = conn.execute(f"""
-            SELECT COUNT(*)
-            FROM read_parquet('{PARQUET_GLOB}', hive_partitioning=true, union_by_name=true)
+            SELECT COUNT(DISTINCT
+                CAST(TRY_CAST(ExamYear AS INTEGER) AS VARCHAR)
+                || '-' || CAST(ExamNum AS VARCHAR)
+            )
+            FROM read_parquet('{PARQUET_GLOB}',
+                              hive_partitioning=true,
+                              union_by_name=true)
             {where}
         """).fetchone()
         return int(row[0]) if row else 0
@@ -359,46 +470,6 @@ def get_filter_options() -> dict:
         st.error(f"❌ Could not load filter options: {e}")
         return {}
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 5. AGGREGATED QUERY — PRIMARY DATA SOURCE FOR view_report.py
-# ══════════════════════════════════════════════════════════════════════════════
-#
-# WHY THIS EXISTS:
-#   view_report.py previously called query_exam_data() which returns SELECT *
-#   (all raw rows). With 178M records and "ExamType: All" selected, this
-#   transferred ~178M rows into Python RAM → Out of Memory crash.
-#
-# HOW IT WORKS:
-#   This function accepts a list of column names to GROUP BY, plus the same
-#   filter parameters as every other function in this file.
-#   It runs entirely inside DuckDB:
-#
-#       SELECT ExamYear, Sex, COUNT(*) AS Count
-#       FROM parquet files
-#       WHERE ExamYear IN (2000, 2001, ...)   ← only if filters were set
-#       GROUP BY ExamYear, Sex
-#       ORDER BY ExamYear, Sex
-#
-#   The result is a tiny DataFrame — one row per unique combination of the
-#   group_by_cols values. For example, grouping by ["ExamYear", "Sex"] across
-#   6 years with 2 genders returns exactly 12 rows, not 85 million.
-#
-# WHAT view_report.py DOES WITH IT:
-#   - build_chart() receives the aggregated df and plots the "Count" column
-#     directly. No further .groupby() needed in Python.
-#   - generate_narrative() reads summary stats from the Count column.
-#   - KPI boxes read female count, top state, etc. from the aggregated df.
-#
-# EXAMPLE RETURN — group_by_cols=["ExamType"], no filters:
-#
-#     ExamType    | Count
-#     Private     | 83,201,797
-#     School      | 95,402,111
-#
-#   That is 2 rows in Python RAM, not 178 million.
-#
-# ══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(show_spinner="Loading report data...", ttl=1800)
 def query_aggregated_data(

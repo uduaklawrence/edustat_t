@@ -147,7 +147,7 @@ analysis_options = {
     },
 
     # ── GROUP 2: GEOGRAPHIC & REGIONAL ANALYSIS ───────────────────────────────
-    "Centre Geographic Distribution & Accessibility": {
+    "Centre Statistics, Capacity and Load Analysis": {
         "options": [
             (
                 "Centre Count by State & Region",
@@ -163,11 +163,6 @@ analysis_options = {
                 "Underserved Area Identification",
                 "Flag states or regions with disproportionately few centres relative "
                 "to their candidate population.",
-            ),
-            (
-                "Centre Accessibility Index",
-                "Score regions by how accessible examination infrastructure is, "
-                "factoring in centre count relative to candidates.",
             ),
         ]
     },
@@ -315,30 +310,6 @@ analysis_options = {
             ),
         ]
     },
-    "Centre Statistics, Capacity & Load Analysis": {
-        "options": [
-            (
-                "Active Centres by State",
-                "Count the number of active examination centres in each state "
-                "to map infrastructure distribution.",
-            ),
-            (
-                "Candidate Load per Centre",
-                "Calculate average candidate volumes per centre and flag centres "
-                "operating above or below sustainable thresholds.",
-            ),
-            (
-                "Over-Capacity Centre Detection",
-                "Identify centres handling more candidates than is sustainable, "
-                "flagging infrastructure stress points.",
-            ),
-            (
-                "Underutilized Centre Analysis",
-                "Find centres operating well below their candidate capacity to "
-                "inform resource reallocation decisions.",
-            ),
-        ]
-    },
     "Centre Performance Rankings": {
         "options": [
             (
@@ -376,9 +347,14 @@ analysis_options = {
                 "failing to sit their exams.",
             ),
             (
-                "Absenteeism by Exam Type & Gender",
-                "Break down absenteeism rates across exam types and gender groups "
-                "to identify at-risk segments.",
+                "Absenteeism by Exam Type",
+                "Break down absenteeism rates across examination types "
+                "to identify which exam pathways have the highest dropout.",
+            ),
+            (
+                "Absenteeism by Gender",
+                "Compare absenteeism rates between male and female candidates "
+                "to identify gender-based attendance patterns..",
             ),
             (
                 "Absenteeism Trends Over Time",
@@ -854,7 +830,7 @@ if selected_subgroup in analysis_options:
                 </div>
                 """, unsafe_allow_html=True)
 
-                if st.button("Explore Filters →", key=f"filter_{title}", type="primary"):
+                if st.button("Explore Filters ", key=f"filter_{title}", type="primary", use_container_width=True):
                     st.session_state.selected_analysis   = title
                     st.session_state.selected_subgroup   = selected_subgroup
                     st.session_state.selected_main_group = selected_main_group

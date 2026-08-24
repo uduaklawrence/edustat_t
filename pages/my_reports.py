@@ -39,10 +39,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
  
-st.markdown("""
-<div class="reports-header">
-    <div class="reports-title">Saved Reports</div>
-    <div class="reports-subtitle">Access and manage your previously generated reports</div>
+# st.markdown("""
+# <div class="reports-header">
+#    <div class="reports-title">Saved Reports</div>
+#    <div class="reports-subtitle">Access and manage your previously generated reports</div>
 </div>
 """, unsafe_allow_html=True)
 
